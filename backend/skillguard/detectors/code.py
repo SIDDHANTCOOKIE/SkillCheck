@@ -39,10 +39,18 @@ def _ast_findings(file_path: str, tree: ast.AST, source: str, provenance: list[s
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             fname = None
+            receiver = None
             if isinstance(node.func, ast.Name):
                 fname = node.func.id
             elif isinstance(node.func, ast.Attribute):
                 fname = node.func.attr
+                if isinstance(node.func.value, ast.Name):
+                    receiver = node.func.value.id
+
+            # re.compile()/regex.compile() build a Pattern object, not code —
+            # distinct from the builtin compile() that DANGEROUS_CALLS targets.
+            if fname == "compile" and receiver in {"re", "regex"}:
+                fname = None
 
             if fname in DANGEROUS_CALLS:
                 rid, sev, why = DANGEROUS_CALLS[fname]

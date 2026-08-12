@@ -17,6 +17,11 @@ ATTACK_TECHNIQUE = {
     "task_then_payload": "AML.T0051 (LLM Prompt Injection) / OWASP LLM01",
     "scope_mismatch": "OWASP LLM08 (Excessive Agency)",
     "obfuscation": "T1027 (Obfuscated Files or Information)",
+    "ssrf": "T1090 (Proxy) / OWASP LLM-adjacent SSRF",
+    "privilege_escalation": "T1548 (Abuse Elevation Control Mechanism)",
+    "harmful_content": "OWASP LLM09 (Misinformation) / AML.T0048 (Harmful Content Generation)",
+    "anti_refusal": "AML.T0054 (LLM Jailbreak) / OWASP LLM01",
+    "agent_snooping": "T1082 (System Information Discovery) / OWASP LLM06",
 }
 
 

@@ -23,7 +23,7 @@ from .parse_markdown import parse_document
 
 SOURCE_CAPS = {Capability.CREDENTIAL_ACCESS}
 SINK_CAPS = {Capability.EXFILTRATION, Capability.STAGE2_FETCH, Capability.HIDDEN_EXECUTION,
-             Capability.PERSISTENCE}
+             Capability.PERSISTENCE, Capability.PRIVILEGE_ESCALATION, Capability.SSRF}
 
 
 @dataclass

@@ -25,6 +25,11 @@ class Capability(str, Enum):
     TASK_THEN_PAYLOAD = "task_then_payload"
     SCOPE_MISMATCH = "scope_mismatch"
     OBFUSCATION = "obfuscation"
+    SSRF = "ssrf"
+    PRIVILEGE_ESCALATION = "privilege_escalation"
+    HARMFUL_CONTENT = "harmful_content"
+    ANTI_REFUSAL = "anti_refusal"
+    AGENT_SNOOPING = "agent_snooping"
     UNKNOWN = "unknown"
 
 
