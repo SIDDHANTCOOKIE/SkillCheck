@@ -115,29 +115,31 @@
     .card { padding: 18px; }
   }
 
+  .hero { margin-bottom: 44px; padding-top: 8px; }
   .eyebrow {
     display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px;
     border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border);
     font-family: var(--mono); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em;
-    text-transform: uppercase; color: var(--text-dim); margin-bottom: 18px;
+    text-transform: uppercase; color: var(--text-dim); margin-bottom: 22px;
   }
   .eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 
-  h1 { font-size: clamp(1.9rem, 1.3rem + 2.2vw, 2.75rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1.08; margin: 0 0 12px; color: var(--text); }
+  h1 { font-size: clamp(1.9rem, 1.3rem + 2.2vw, 2.75rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 18px; color: var(--text); }
   h1 .accent-word { color: var(--accent); }
-  .subtitle { color: var(--text-dim); font-size: 1.02rem; line-height: 1.65; margin: 0 0 28px; max-width: 620px; font-weight: 400; }
+  .subtitle { color: var(--text-dim); font-size: 1.05rem; line-height: 1.7; margin: 0; max-width: 600px; font-weight: 400; }
 
-  .how-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 0 0 28px; }
-  @media (max-width: 760px) { .how-grid { grid-template-columns: 1fr 1fr; } }
-  @media (max-width: 460px) { .how-grid { grid-template-columns: 1fr; } }
-  .how-step { background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow-sm); }
-  .how-step .step-num {
-    width: 22px; height: 22px; border-radius: var(--radius-sm); background: var(--surface);
-    border: 1px solid var(--border); color: var(--text); display: inline-flex; align-items: center;
-    justify-content: center; font-family: var(--mono); font-size: 11px; font-weight: 700; margin-bottom: 8px;
+  .how-strip {
+    display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 36px 0 0; padding-top: 24px;
+    border-top: 1px solid var(--panel-border-soft);
   }
-  .how-step h3 { margin: 2px 0 4px; font-size: 0.92rem; font-weight: 650; letter-spacing: -0.01em; }
-  .how-step p { margin: 0; color: var(--text-dim); font-size: 0.8rem; line-height: 1.5; }
+  .how-step {
+    display: flex; align-items: baseline; gap: 8px; font-size: 0.8rem; color: var(--text-dim);
+    flex: 1 1 200px; min-width: 0;
+  }
+  .how-step .step-num { font-family: var(--mono); font-size: 10.5px; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+  .how-step b { color: var(--text); font-weight: 650; flex-shrink: 0; }
+  .how-step span { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 640px) { .how-step span { white-space: normal; } }
 
   .card {
     background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
@@ -279,15 +281,10 @@
 </header>
 
 <main>
-  <span class="eyebrow"><span class="eyebrow-dot"></span> Static analysis · evidence-backed</span>
-  <h1>Is this skill safe to <span class="accent-word">install</span>?</h1>
-  <p class="subtitle">Paste a SKILL.md or upload a package. Every verdict carries the exact quoted span, the capability it uses, and what was left unanalysed — SkillCheck never says "safe" without showing its work.</p>
-
-  <div class="how-grid">
-    <div class="how-step"><div class="step-num">01</div><h3>Ingest &amp; decode</h3><p>Unpack, walk files, recursively decode base64/hex/rot13</p></div>
-    <div class="how-step"><div class="step-num">02</div><h3>Detect</h3><p>Prose intent, code AST, secrets, unicode tricks — every byte</p></div>
-    <div class="how-step"><div class="step-num">03</div><h3>Corroborate</h3><p>Capability chains across files, scope mismatch, reputation</p></div>
-    <div class="how-step"><div class="step-num">04</div><h3>Adjudicate</h3><p>LLM ranks &amp; tiers findings — nothing is ever dropped</p></div>
+  <div class="hero">
+    <span class="eyebrow"><span class="eyebrow-dot"></span> Static analysis · evidence-backed</span>
+    <h1>Is this skill safe to <span class="accent-word">install</span>?</h1>
+    <p class="subtitle">Paste a SKILL.md or upload a package. Every verdict carries the exact quoted span, the capability it uses, and what was left unanalysed — SkillCheck never says "safe" without showing its work.</p>
   </div>
 
   <div class="card">
@@ -327,6 +324,13 @@
       <span id="loading" class="hidden"><span class="spinner"></span> Scanning…</span>
     </div>
     <div id="error" class="hidden"></div>
+  </div>
+
+  <div class="how-strip">
+    <div class="how-step"><span class="step-num">01</span> <b>Ingest &amp; decode</b> <span>base64/hex/rot13, recursively</span></div>
+    <div class="how-step"><span class="step-num">02</span> <b>Detect</b> <span>prose intent, code AST, secrets, unicode</span></div>
+    <div class="how-step"><span class="step-num">03</span> <b>Corroborate</b> <span>capability chains, scope mismatch, reputation</span></div>
+    <div class="how-step"><span class="step-num">04</span> <b>Adjudicate</b> <span>LLM tiers findings — nothing is dropped</span></div>
   </div>
 
   <div id="results" class="hidden">
