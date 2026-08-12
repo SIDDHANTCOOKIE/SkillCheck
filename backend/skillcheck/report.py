@@ -51,7 +51,7 @@ _TIER_ORDER = {"confirmed": 0, "likely": 1, "possible": 2, "insufficient_context
 
 
 def to_markdown(verdict: Verdict, adjudicator_mode: str, chains: list[Chain]) -> str:
-    lines = [f"# SkillGuard Report", "", f"**Verdict: {verdict.label}**", "", verdict.summary, "",
+    lines = [f"# SkillCheck Report", "", f"**Verdict: {verdict.label}**", "", verdict.summary, "",
               f"_Adjudicator mode: {adjudicator_mode}_", ""]
 
     if chains:

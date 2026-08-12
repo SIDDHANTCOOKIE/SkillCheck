@@ -4,6 +4,7 @@ __pycache__/
 venv/
 *.egg-info/
 backend/server.log
+backend/skillcheck_reports.db
 backend/.pytest_cache/
 node_modules/
 .DS_Store

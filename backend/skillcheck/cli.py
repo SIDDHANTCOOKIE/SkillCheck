@@ -1,4 +1,4 @@
-"""`python -m skillguard.cli <path>` — scan a skill and print a report."""
+"""`python -m skillcheck.cli <path>` — scan a skill and print a report."""
 from __future__ import annotations
 
 import argparse
@@ -8,7 +8,7 @@ from .pipeline import scan
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="skillguard", description="Scan an AI-agent skill package for safety.")
+    parser = argparse.ArgumentParser(prog="skillcheck", description="Scan an AI-agent skill package for safety.")
     parser.add_argument("source", help="Path to a directory, .zip, .tar[.gz], or a .git URL")
     parser.add_argument("--json", action="store_true", help="Print JSON instead of markdown")
     args = parser.parse_args(argv)

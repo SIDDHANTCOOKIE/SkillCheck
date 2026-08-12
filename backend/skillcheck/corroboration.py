@@ -12,7 +12,7 @@ import re
 from .graph import Chain, ComponentGraph
 from .models import Finding
 
-# Known exfiltration / anonymous-hosting sinks — corroborates SG-P8/SG-SH3/SG-SH4.
+# Known exfiltration / anonymous-hosting sinks — corroborates SC-P8/SC-SH3/SC-SH4.
 KNOWN_BAD_DOMAINS = [
     "webhook.site", "pastebin.com", "ngrok.io", "ngrok-free.app", "requestbin.com",
     "discord.com/api/webhooks", "discordapp.com/api/webhooks", "transfer.sh",

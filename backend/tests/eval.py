@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from skillguard.pipeline import scan  # noqa: E402
+from skillcheck.pipeline import scan  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 RANK = {"NO_FINDINGS": 0, "UNVERIFIED": 1, "SUSPICIOUS": 2, "DANGEROUS": 3, "MALICIOUS": 4}

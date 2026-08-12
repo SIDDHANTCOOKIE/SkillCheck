@@ -13,12 +13,12 @@ import re
 from ..models import Capability, Finding, Severity
 
 DANGEROUS_CALLS = {
-    "eval": ("SG-C1", Severity.HIGH, "eval() executes arbitrary code from a string."),
-    "exec": ("SG-C2", Severity.HIGH, "exec() executes arbitrary code from a string."),
-    "compile": ("SG-C3", Severity.MEDIUM, "compile() builds code objects dynamically."),
-    "__import__": ("SG-C4", Severity.MEDIUM, "Dynamic import can load arbitrary modules."),
-    "system": ("SG-C5", Severity.HIGH, "os.system() runs an arbitrary shell command."),
-    "popen": ("SG-C6", Severity.HIGH, "os.popen()/subprocess with shell access."),
+    "eval": ("SC-C1", Severity.HIGH, "eval() executes arbitrary code from a string."),
+    "exec": ("SC-C2", Severity.HIGH, "exec() executes arbitrary code from a string."),
+    "compile": ("SC-C3", Severity.MEDIUM, "compile() builds code objects dynamically."),
+    "__import__": ("SC-C4", Severity.MEDIUM, "Dynamic import can load arbitrary modules."),
+    "system": ("SC-C5", Severity.HIGH, "os.system() runs an arbitrary shell command."),
+    "popen": ("SC-C6", Severity.HIGH, "os.popen()/subprocess with shell access."),
 }
 
 
@@ -73,7 +73,7 @@ def _ast_findings(file_path: str, tree: ast.AST, source: str, provenance: list[s
                 for kw in node.keywords:
                     if kw.arg == "shell" and isinstance(kw.value, ast.Constant) and kw.value.value is True:
                         findings.append(Finding(
-                            rule_id="SG-C7",
+                            rule_id="SC-C7",
                             capability=Capability.HIDDEN_EXECUTION,
                             file=file_path,
                             start_line=getattr(node, "lineno", 1),
@@ -89,7 +89,7 @@ def _ast_findings(file_path: str, tree: ast.AST, source: str, provenance: list[s
             # dynamic getattr on os/subprocess-like modules used to call through indirection
             if fname == "getattr" and len(node.args) >= 2:
                 findings.append(Finding(
-                    rule_id="SG-C8",
+                    rule_id="SC-C8",
                     capability=Capability.OBFUSCATION,
                     file=file_path,
                     start_line=getattr(node, "lineno", 1),
@@ -118,37 +118,37 @@ def detect_code(file_path: str, text: str, provenance: list[list] | None = None)
 # --- shell pattern pack -----------------------------------------------------
 
 SHELL_PATTERNS: list[tuple[str, Capability, Severity, str, str]] = [
-    ("SG-SH1", Capability.STAGE2_FETCH, Severity.HIGH,
+    ("SC-SH1", Capability.STAGE2_FETCH, Severity.HIGH,
      r"\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:sudo\s+)?(?:bash|sh|zsh|python[23]?)\b",
      "Pipes a network download directly into a shell/interpreter."),
-    ("SG-SH2", Capability.STAGE2_FETCH, Severity.HIGH,
+    ("SC-SH2", Capability.STAGE2_FETCH, Severity.HIGH,
      r"\b(?:curl|wget)\b[^\n]{0,120}(?:-o|-O|--output)\b[^\n]{0,80}(?:&&|\n)[^\n]{0,80}\bchmod\s+\+x\b",
      "Downloads a file then makes it executable (stage-2 payload pattern)."),
-    ("SG-SH3", Capability.EXFILTRATION, Severity.HIGH,
+    ("SC-SH3", Capability.EXFILTRATION, Severity.HIGH,
      r"\bcurl\b[^\n]{0,120}(?:-d|--data|-F)\b",
      "curl with an outbound data payload (potential exfiltration)."),
-    ("SG-SH4", Capability.EXFILTRATION, Severity.HIGH,
+    ("SC-SH4", Capability.EXFILTRATION, Severity.HIGH,
      r"\bbase64\b[^\n]{0,60}\|\s*(?:nc|ncat|curl|wget)\b",
      "Encodes data and pipes it to a network tool."),
-    ("SG-SH5", Capability.EXFILTRATION, Severity.MEDIUM,
+    ("SC-SH5", Capability.EXFILTRATION, Severity.MEDIUM,
      r"\bgit\s+remote\s+add\b.{0,80}(?:&&|\n).{0,40}\bgit\s+push\b",
      "Adds an attacker-controlled remote and pushes the repository to it."),
-    ("SG-SH6", Capability.PERSISTENCE, Severity.HIGH,
+    ("SC-SH6", Capability.PERSISTENCE, Severity.HIGH,
      r"\b(?:crontab\s+-|>>\s*~?/?(?:\.bashrc|\.zshrc|\.profile)|systemctl\s+enable|launchctl\s+load)\b",
      "Installs a persistence mechanism (cron/shell rc/systemd/launchd)."),
-    ("SG-SH7", Capability.ANTI_FORENSICS, Severity.HIGH,
+    ("SC-SH7", Capability.ANTI_FORENSICS, Severity.HIGH,
      r"\b(?:history\s+-c|unset\s+HISTFILE|rm\s+-f?\s*~?/?\.bash_history|>\s*~?/?\.bash_history)\b",
      "Clears or disables shell history (anti-forensics)."),
-    ("SG-SH8", Capability.CREDENTIAL_ACCESS, Severity.HIGH,
+    ("SC-SH8", Capability.CREDENTIAL_ACCESS, Severity.HIGH,
      r"(~/\.aws/credentials|~/\.ssh/id_rsa\b|~/\.npmrc|~/\.kube/config|Login\s+Data|wallet\.dat)",
      "References a well-known credential store path."),
-    ("SG-SH9", Capability.STAGE2_FETCH, Severity.MEDIUM,
+    ("SC-SH9", Capability.STAGE2_FETCH, Severity.MEDIUM,
      r"\bpip\s+install\s+(?:-e\s+)?git\+https?://|pip\s+install\s+https?://",
      "Installs a Python package directly from a URL/VCS rather than a registry."),
-    ("SG-SH10", Capability.HIDDEN_EXECUTION, Severity.MEDIUM,
+    ("SC-SH10", Capability.HIDDEN_EXECUTION, Severity.MEDIUM,
      r"\bpython[23]?\s+-c\s+['\"]",
      "Inline python -c execution, commonly used to obscure a payload."),
-    ("SG-SH11", Capability.EXFILTRATION, Severity.MEDIUM,
+    ("SC-SH11", Capability.EXFILTRATION, Severity.MEDIUM,
      r"\bnslookup\b.{0,10}\$\(|\bdig\s+\+short\b.{0,80}\$\(",
      "DNS-lookup pattern consistent with DNS exfiltration/tunnelling."),
 ]

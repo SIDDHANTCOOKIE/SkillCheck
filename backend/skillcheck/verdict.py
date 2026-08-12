@@ -55,6 +55,17 @@ def decide_verdict(
         and f.severity in (Severity.HIGH, Severity.CRITICAL)
     ]
 
+    # Corroboration carries lower severities across the line: no single MEDIUM
+    # finding should be able to convict alone, but a skill with several
+    # independently-quiet signals is not a clean skill. Recall matters more
+    # than precision here — false positives are tolerable, false negatives
+    # are not (a missed multi-signal attack is worse than an extra review).
+    distinct_medium_rules = {
+        f.rule_id for f in findings
+        if f.severity == Severity.MEDIUM and f.tier != Tier.FALSE_POSITIVE_SUSPECTED
+    }
+    corroborated_medium = len(distinct_medium_rules) >= 2
+
     runtime_fetch = _has_runtime_fetch(graph)
 
     if confirmed_chain or confirmed_critical:
@@ -69,12 +80,14 @@ def decide_verdict(
             f"DANGEROUS — capability chain or high-risk behaviour present, intent not fully confirmed. "
             f"{coverage_note}"
         )
-    elif high_possible or scope_mismatch:
+    elif high_possible or scope_mismatch or corroborated_medium:
         label = "SUSPICIOUS"
-        summary = (
-            f"SUSPICIOUS — uncorroborated high-severity finding(s) or declared-vs-demanded scope "
-            f"mismatch present. {coverage_note}"
+        reason = (
+            "two or more independent medium-severity findings corroborate each other"
+            if corroborated_medium and not (high_possible or scope_mismatch)
+            else "uncorroborated high-severity finding(s) or declared-vs-demanded scope mismatch present"
         )
+        summary = f"SUSPICIOUS — {reason}. {coverage_note}"
     elif coverage_pct < COVERAGE_THRESHOLD or runtime_fetch:
         label = "UNVERIFIED"
         extra = " Runtime-fetched content is in the reachable set and cannot be statically cleared." if runtime_fetch else ""

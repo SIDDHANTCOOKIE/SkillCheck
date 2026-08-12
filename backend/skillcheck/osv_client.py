@@ -100,7 +100,7 @@ def query_osv(manifests: dict[str, list[tuple[str, str]]]) -> list[Finding]:
             continue
         ids = ", ".join(v.get("id", "?") for v in vulns[:5])
         findings.append(Finding(
-            rule_id="SG-OSV1",
+            rule_id="SC-OSV1",
             capability=Capability.UNKNOWN,
             file=path,
             start_line=1,
