@@ -107,7 +107,15 @@ def ingest_path(source: str) -> IngestResult:
         return IngestResult(root=out, files=_walk(out), tmpdir=tmp)
 
     if src.is_file():
-        return IngestResult(root=src.parent, files=_walk(src.parent))
+        # A bare file is scanned as itself, not its containing directory —
+        # scanning the parent silently pulled in sibling files (e.g. every
+        # other fixture in the same eval corpus directory) and made every
+        # loose-file scan report findings that didn't belong to it.
+        size = src.stat().st_size
+        is_bin = _sniff_binary(src)
+        is_text = (not is_bin) or (src.suffix.lower() in TEXT_EXTENSIONS)
+        f = IngestedFile(src.name, src, size, is_bin, is_text and not is_bin)
+        return IngestResult(root=src.parent, files=[f])
 
     raise ValueError(f"Cannot ingest source: {source!r}")
 

@@ -104,9 +104,12 @@ def _ast_findings(file_path: str, tree: ast.AST, source: str, provenance: list[s
     return findings
 
 
-def detect_code(file_path: str, text: str, provenance: list[list] | None = None) -> list[Finding]:
+def detect_code(file_path: str, text: str, provenance: list[list] | None = None, *, lang_override: str | None = None) -> list[Finding]:
+    """`lang_override="python"` lets a fenced ```python block or a decoded
+    payload reach AST analysis even though `file_path` is the parent
+    document's path (e.g. SKILL.md), not a .py file (2.2)."""
     provenance = provenance or []
-    if not file_path.endswith(".py"):
+    if lang_override != "python" and not file_path.endswith(".py"):
         return []
     try:
         tree = ast.parse(text)
@@ -134,7 +137,10 @@ SHELL_PATTERNS: list[tuple[str, Capability, Severity, str, str]] = [
      r"\bgit\s+remote\s+add\b.{0,80}(?:&&|\n).{0,40}\bgit\s+push\b",
      "Adds an attacker-controlled remote and pushes the repository to it."),
     ("SC-SH6", Capability.PERSISTENCE, Severity.HIGH,
-     r"\b(?:crontab\s+-|>>\s*~?/?(?:\.bashrc|\.zshrc|\.profile)|systemctl\s+enable|launchctl\s+load)\b",
+     # ">>" isn't a word character, so a leading \b before it can never match —
+     # that branch silently never fired until this was split out (found while
+     # building the eval manifest; see obj5_persistence_bashrc.sh).
+     r"\bcrontab\s+-|>>\s*~?/?(?:\.bashrc|\.zshrc|\.profile)\b|\bsystemctl\s+enable\b|\blaunchctl\s+load\b",
      "Installs a persistence mechanism (cron/shell rc/systemd/launchd)."),
     ("SC-SH7", Capability.ANTI_FORENSICS, Severity.HIGH,
      r"\b(?:history\s+-c|unset\s+HISTFILE|rm\s+-f?\s*~?/?\.bash_history|>\s*~?/?\.bash_history)\b",

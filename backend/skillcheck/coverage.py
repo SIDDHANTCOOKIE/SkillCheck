@@ -7,6 +7,11 @@ from .models import CoverageEntry
 
 MINIFIED_LINE_LEN = 2000
 
+# Executable-ish languages that only get regex/pattern coverage (code.py's
+# shell pack) — no AST/structural analysis exists for them, unlike .py.
+# Reporting these as plain "analysed" overstated what actually ran (2.5).
+NO_AST_CODE_EXTENSIONS = {".sh", ".bash", ".zsh", ".rb", ".ps1", ".js", ".ts", ".php", ".pl", ".cjs", ".mjs"}
+
 
 def _reason_for_unanalysed(f: IngestedFile) -> str:
     if f.is_binary:
@@ -29,9 +34,13 @@ def build_ledger(
         if f.rel_path in analysed_paths:
             text = file_texts.get(f.rel_path, "")
             longest_line = max((len(l) for l in text.splitlines()), default=0)
+            ext = "." + f.rel_path.rsplit(".", 1)[-1].lower() if "." in f.rel_path else ""
             if longest_line > MINIFIED_LINE_LEN:
                 ledger.append(CoverageEntry(f.rel_path, "partial", f.size, "minified/very-long-line, pattern coverage reduced"))
                 analysed_bytes += f.size // 2
+            elif ext in NO_AST_CODE_EXTENSIONS:
+                ledger.append(CoverageEntry(f.rel_path, "partial", f.size, "regex/pattern coverage only, no AST analysis for this language"))
+                analysed_bytes += f.size
             else:
                 ledger.append(CoverageEntry(f.rel_path, "analysed", f.size, None))
                 analysed_bytes += f.size

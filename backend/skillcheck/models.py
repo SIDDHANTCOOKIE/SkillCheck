@@ -71,7 +71,8 @@ class Finding:
     tier: Tier = Tier.POSSIBLE
     provenance: list[str] = field(default_factory=list)
     attack_technique: Optional[str] = None
-    chain_id: Optional[str] = None
+    chain_id: Optional[str] = None  # first chain this finding joined; kept for report rendering
+    chain_ids: list[str] = field(default_factory=list)  # every chain it participates in (2.5)
     detector: str = ""
 
     def to_dict(self) -> dict:

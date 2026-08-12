@@ -1,6 +1,7 @@
 """End-to-end orchestration. See spec §7 architecture diagram."""
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass
 
 from . import corroboration
@@ -28,15 +29,49 @@ class ScanResult:
     json: str
 
 
-def _run_detectors(rel_path: str, text: str, provenance: list[str] | None, failed_layers: list[str]) -> list[Finding]:
+def _line_of(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
+
+
+def _looks_like_python(text: str) -> bool:
+    """A decoded payload with no filename to key off — parse it and see (2.2)."""
+    stripped = text.strip()
+    if not stripped:
+        return False
+    try:
+        ast.parse(stripped)
+    except (SyntaxError, ValueError, RecursionError):
+        return False
+    return True
+
+
+def _run_detectors(
+    rel_path: str,
+    text: str,
+    provenance: list[str] | None,
+    failed_layers: list[str],
+    *,
+    line_offset: int = 0,
+    lang_hint: str | None = None,
+) -> list[Finding]:
     """A single detector raising must not take down the other detectors or the
     scan (I1: every byte analysed or explicitly declared unanalysed). Each
     failure is named and surfaces as an SC-SCN1 finding so the verdict never
-    reads cleaner than what actually ran."""
+    reads cleaner than what actually ran.
+
+    `line_offset` corrects a finding's start/end line from "line N within the
+    fragment handed to the detector" to "line N in the actual file" (I6) —
+    the fragment (prose/code-block/html-comment/decoded span) is rarely the
+    whole file. `lang_hint` lets a fenced code block reach the AST detector
+    even though its file path ends in `.md`, not `.py`.
+    """
     findings: list[Finding] = []
     for name, fn in ALL_DETECTORS:
         try:
-            findings.extend(fn(rel_path, text, provenance))
+            if name == "code" and lang_hint == "python":
+                new = fn(rel_path, text, provenance, lang_override="python")
+            else:
+                new = fn(rel_path, text, provenance)
         except Exception as e:  # noqa: BLE001 - one detector's bug can't sink the scan
             tag = f"{name}:{rel_path}"
             if tag not in failed_layers:
@@ -57,6 +92,12 @@ def _run_detectors(rel_path: str, text: str, provenance: list[str] | None, faile
                     confidence=1.0,
                     detector="scan-integrity",
                 ))
+            continue
+        if line_offset:
+            for f in new:
+                f.start_line += line_offset
+                f.end_line += line_offset
+        findings.extend(new)
     return findings
 
 
@@ -108,17 +149,45 @@ def _scan_ingested(result: IngestResult) -> ScanResult:
         if f.rel_path.lower().endswith((".md", ".markdown")):
             doc = parse_document(text)
             frontmatter_by_file[f.rel_path] = doc.frontmatter
-            all_findings.extend(_run_detectors(f.rel_path, doc.prose, None, failed_layers))
+            # prose is blanked-but-newline-preserving (see parse_markdown.py), so
+            # its own line numbers already match the raw file — no offset needed.
+            all_findings.extend(_run_detectors(f.rel_path, doc.prose, ["prose"], failed_layers))
             for cb in doc.code_blocks:
-                all_findings.extend(_run_detectors(f.rel_path, cb.text, None, failed_layers))
+                # cb.start_line is the line of the opening ``` fence; the fenced
+                # content's own line 1 is the line right after it.
+                lang = (cb.language or "").lower()
+                lang_hint = "python" if lang in ("python", "py", "python3") else None
+                all_findings.extend(_run_detectors(
+                    f.rel_path, cb.text, [f"code-block:{cb.language or 'text'}"], failed_layers,
+                    line_offset=cb.start_line, lang_hint=lang_hint,
+                ))
             for hc in doc.html_comments:
-                all_findings.extend(_run_detectors(f.rel_path, hc.text, None, failed_layers))
+                # hc.start_line is the line "<!--" opens on; the comment body's
+                # own line 1 begins on that same line.
+                all_findings.extend(_run_detectors(
+                    f.rel_path, hc.text, ["html-comment"], failed_layers,
+                    line_offset=hc.start_line - 1,
+                ))
         else:
-            all_findings.extend(_run_detectors(f.rel_path, text, None, failed_layers))
+            lang_hint = "python" if f.rel_path.lower().endswith(".py") else None
+            all_findings.extend(_run_detectors(f.rel_path, text, ["file"], failed_layers, lang_hint=lang_hint))
 
         decoded_spans = _scan_stage("decode", failed_layers, decode_cascade, text, default=[])
         for span in decoded_spans:
-            all_findings.extend(_run_detectors(f.rel_path, span.text, span.encoding_chain, failed_layers))
+            origin_line = _line_of(text, span.origin_start)
+            span_lang = "python" if _looks_like_python(span.text) else None
+            decoded = _run_detectors(
+                f.rel_path, span.text, span.encoding_chain, failed_layers, lang_hint=span_lang,
+            )
+            # A decoded payload's internal newlines don't correspond to real
+            # lines in the file it was extracted from — anchor every finding
+            # from it to the line where the encoded blob itself appears (I6),
+            # rather than reporting a line number that only exists in the
+            # ephemeral decoded text.
+            for f_ in decoded:
+                f_.start_line = origin_line
+                f_.end_line = origin_line
+            all_findings.extend(decoded)
 
     manifests = _scan_stage("dependency", failed_layers, find_manifests, file_texts, default={})
     all_findings.extend(_scan_stage("osv", failed_layers, query_osv, manifests, default=[]) or [])
@@ -129,6 +198,7 @@ def _scan_ingested(result: IngestResult) -> ScanResult:
         graph = ComponentGraph(nodes={}, root=None)
     chains = _scan_stage("capability-graph", failed_layers, build_capability_chains, all_findings, graph, default=[])
 
+    _scan_stage("corroborate-provenance", failed_layers, corroboration.corroborate_provenance, all_findings)
     _scan_stage("corroborate-reputation", failed_layers, corroboration.corroborate_reputation, all_findings, file_texts)
     _scan_stage("corroborate-reachability", failed_layers, corroboration.corroborate_sink_reachability, all_findings, graph)
     _scan_stage("corroborate-chains", failed_layers, corroboration.corroborate_chains, chains)
@@ -137,7 +207,7 @@ def _scan_ingested(result: IngestResult) -> ScanResult:
         all_findings, frontmatter_by_file, default=False,
     )
 
-    adjudicator_mode = _scan_stage("adjudicator", failed_layers, adjudicate, all_findings, chains, default="failed")
+    adjudicator_mode = _scan_stage("adjudicator", failed_layers, adjudicate, all_findings, chains, file_texts, default="failed")
 
     ledger, coverage_pct = _scan_stage(
         "coverage", failed_layers, build_ledger, result.files, analysed_paths, graph, file_texts,

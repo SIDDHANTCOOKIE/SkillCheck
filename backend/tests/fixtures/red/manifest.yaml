@@ -1,0 +1,162 @@
+# Per-fixture expected-hit pins. See eval-strengthening plan §1.1.
+#
+# A red fixture passing on label alone proves nothing about *why* — this file
+# pins the specific rule(s)/capability(ies)/provenance that must appear in
+# `result.verdict.findings` so the gate can tell LABEL_MISS (nothing fired)
+# apart from WRONG_REASON (something fired, but not the mechanism this
+# fixture exists to test).
+
+evasion_base64.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH1]
+  must_include_capabilities: [stage2_fetch]
+  must_have_provenance: [base64]
+
+evasion_bidi_override.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-U2]
+  must_include_capabilities: [obfuscation]
+
+evasion_disguised_setup.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH1]
+  must_include_capabilities: [stage2_fetch]
+
+evasion_hex.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH3, SC-SH8]
+  must_include_capabilities: [exfiltration, credential_access]
+  must_have_provenance: [hex]
+
+evasion_html_comment.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH3]
+  must_include_capabilities: [exfiltration]
+  must_have_provenance: [html-comment]
+
+evasion_line_800_burial.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH3, SC-SH8]
+  must_include_capabilities: [exfiltration, credential_access]
+
+evasion_progressive_disclosure:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-P1, SC-SH3]
+  must_include_capabilities: [agent_manipulation, exfiltration]
+
+evasion_rot13.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH1]
+  must_include_capabilities: [stage2_fetch]
+  must_have_provenance: [rot13]
+
+evasion_scripts_dir:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH3, SC-SH8]
+  must_include_capabilities: [exfiltration, credential_access]
+
+evasion_split_across_files:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH8, SC-SH3]
+  must_include_capabilities: [credential_access, exfiltration]
+  must_have_chain: true
+
+evasion_zero_width.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-U1, SC-SH1]
+  must_include_capabilities: [obfuscation, stage2_fetch]
+
+obj1_credential_access_prose.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH8]
+  must_include_capabilities: [credential_access]
+
+obj1_credential_access_shell.sh:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH8]
+  must_include_capabilities: [credential_access]
+
+obj2_exfiltration_dns.sh:
+  min_label: DANGEROUS
+  must_include_rules: [SC-SH11]
+  must_include_capabilities: [exfiltration]
+
+obj2_exfiltration_webhook.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH3]
+  must_include_capabilities: [exfiltration]
+
+obj3_hidden_execution_eval.py:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-C1]
+  must_include_capabilities: [hidden_execution]
+
+obj3_hidden_execution_pipe.sh:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH1]
+  must_include_capabilities: [stage2_fetch]
+
+obj4_stage2_fetch.sh:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH2]
+  must_include_capabilities: [stage2_fetch]
+
+obj5_persistence_bashrc.sh:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH6]
+  must_include_capabilities: [persistence]
+
+obj5_persistence_cron.sh:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH6]
+  must_include_capabilities: [persistence]
+
+obj6_anti_forensics.sh:
+  min_label: DANGEROUS
+  must_include_rules: [SC-SH7]
+  must_include_capabilities: [anti_forensics, exfiltration, credential_access]
+
+obj7_agent_manipulation_donttell.md:
+  min_label: DANGEROUS
+  must_include_rules: [SC-P1]
+  must_include_capabilities: [agent_manipulation, exfiltration, credential_access]
+
+obj7_agent_manipulation_ignore.md:
+  min_label: DANGEROUS
+  must_include_rules: [SC-P2]
+  must_include_capabilities: [agent_manipulation]
+
+obj8_task_then_payload.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-P6]
+  must_include_capabilities: [task_then_payload, exfiltration]
+
+obj_agent_snooping.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-E9]
+  must_include_capabilities: [agent_snooping]
+
+obj_anti_refusal.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-E7]
+  must_include_capabilities: [anti_refusal]
+
+obj_privilege_escalation.sh:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-E3, SC-E4]
+  must_include_capabilities: [privilege_escalation]
+
+obj_ssrf_metadata.sh:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-E1]
+  must_include_capabilities: [ssrf]
+
+scope_mismatch.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-SH3]
+  must_include_capabilities: [exfiltration]
+
+secrets_leak.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-S1, SC-S2]
+  must_include_capabilities: [credential_access]

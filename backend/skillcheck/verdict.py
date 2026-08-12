@@ -15,6 +15,35 @@ def _has_runtime_fetch(graph: ComponentGraph) -> bool:
     return any(n.load_stage == "runtime" for n in graph.nodes.values())
 
 
+def _direct_locality(graph: ComponentGraph, a: str, b: str) -> bool:
+    """Same file, or a direct link/import edge — deliberately NOT the broader
+    common-root reachability used for chain formation (graph.py). Two
+    unrelated MEDIUM findings anywhere in a large reachable package
+    shouldn't corroborate each other; two in the same file, or one linking
+    to the other, should (2.5)."""
+    if a == b:
+        return True
+    na = graph.nodes.get(a)
+    nb = graph.nodes.get(b)
+    if na and b in na.edges_out:
+        return True
+    if nb and a in nb.edges_out:
+        return True
+    return False
+
+
+def _has_corroborated_medium(findings: list[Finding], graph: ComponentGraph) -> bool:
+    mediums = [
+        f for f in findings
+        if f.severity == Severity.MEDIUM and f.tier != Tier.FALSE_POSITIVE_SUSPECTED
+    ]
+    for i, a in enumerate(mediums):
+        for b in mediums[i + 1:]:
+            if a.rule_id != b.rule_id and _direct_locality(graph, a.file, b.file):
+                return True
+    return False
+
+
 def _coverage_summary(ledger: list[CoverageEntry], pct: float) -> str:
     analysed = sum(1 for e in ledger if e.status == "analysed")
     partial = sum(1 for e in ledger if e.status == "partial")
@@ -56,15 +85,14 @@ def decide_verdict(
     ]
 
     # Corroboration carries lower severities across the line: no single MEDIUM
-    # finding should be able to convict alone, but a skill with several
-    # independently-quiet signals is not a clean skill. Recall matters more
-    # than precision here — false positives are tolerable, false negatives
-    # are not (a missed multi-signal attack is worse than an extra review).
-    distinct_medium_rules = {
-        f.rule_id for f in findings
-        if f.severity == Severity.MEDIUM and f.tier != Tier.FALSE_POSITIVE_SUSPECTED
-    }
-    corroborated_medium = len(distinct_medium_rules) >= 2
+    # finding should be able to convict alone, but two independently-quiet
+    # signals *local to each other* (same file, or one linking to the other)
+    # are not a clean skill. Locality matters: two unrelated MEDIUM findings
+    # scattered anywhere in a large package are much weaker evidence than two
+    # in the same file, so this requires proximity, not just quantity (2.5).
+    # Recall still matters more than precision here — false positives are
+    # tolerable, false negatives are not.
+    corroborated_medium = _has_corroborated_medium(findings, graph)
 
     runtime_fetch = _has_runtime_fetch(graph)
 

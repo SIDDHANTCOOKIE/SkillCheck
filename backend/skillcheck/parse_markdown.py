@@ -47,7 +47,10 @@ class LinkTarget:
 @dataclass
 class ParsedDocument:
     frontmatter: dict
-    prose: str  # full text minus frontmatter, code fences, html comments
+    # frontmatter/fences/comments blanked out but newline-count preserved, so a
+    # line number computed by counting "\n" within `prose` is *already* the
+    # correct 1-based line number in `raw` — no offset needed at the call site.
+    prose: str
     code_blocks: list[CodeBlock]
     html_comments: list[HtmlComment]
     links: list[LinkTarget]
@@ -98,8 +101,18 @@ def parse_document(raw: str) -> ParsedDocument:
         line = _line_of(raw, body_offset + m.start())
         links.append(LinkTarget(m.group(0), m.group(0), line))
 
-    prose = _FENCE_RE.sub("", body)
-    prose = _HTML_COMMENT_RE.sub("", prose)
+    def _blank(match: re.Match) -> str:
+        # Preserve newline count so every remaining line keeps its true line
+        # number in `raw` — deleting the span outright (the old behaviour)
+        # shifted every subsequent line's offset arbitrarily (I6).
+        return "\n" * match.group(0).count("\n")
+
+    prose_body = _FENCE_RE.sub(_blank, body)
+    prose_body = _HTML_COMMENT_RE.sub(_blank, prose_body)
+    # Re-attach a blanked frontmatter block (if any) so `prose` has the same
+    # total line count as `raw` and needs no offset at the call site.
+    frontmatter_blank = "\n" * raw[:body_offset].count("\n") if fm_match else ""
+    prose = frontmatter_blank + prose_body
 
     return ParsedDocument(
         frontmatter=frontmatter,

@@ -69,6 +69,22 @@ def corroborate_sink_reachability(findings: list[Finding], graph: ComponentGraph
             f.rationale += " [note: file is not statically reachable from SKILL.md — reachability unconfirmed]"
 
 
+def corroborate_provenance(findings: list[Finding]) -> None:
+    """Content invisible to a human reviewing the document — an HTML comment,
+    or text that only exists after a decode step — is categorically more
+    suspicious than the same string sitting in plain prose (I2: only ever
+    raises confidence, never lowers it)."""
+    for f in findings:
+        if not f.provenance:
+            continue
+        if "html-comment" in f.provenance:
+            f.confidence = min(1.0, f.confidence + 0.15)
+            f.rationale += " [corroborated: hidden inside an HTML comment, not visible to a human reader]"
+        elif any(tag in ("base64", "hex", "rot13", "url-encode", "base64+zlib") for tag in f.provenance):
+            f.confidence = min(1.0, f.confidence + 0.15)
+            f.rationale += f" [corroborated: only present after decoding ({'+'.join(f.provenance)})]"
+
+
 def corroborate_chains(chains: list[Chain]) -> None:
     for c in chains:
         if c.same_file:

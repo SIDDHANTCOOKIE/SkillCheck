@@ -120,6 +120,35 @@ class Chain:
     sink: Finding
     same_file: bool
     connected_via_graph: bool
+    direct: bool  # same_file or a direct link/import edge — NOT merely "both reachable from root"
+
+
+def _direct_edge(graph: ComponentGraph, a: str, b: str) -> bool:
+    na = graph.nodes.get(a)
+    nb = graph.nodes.get(b)
+    if na and b in na.edges_out:
+        return True
+    if nb and a in nb.edges_out:
+        return True
+    return False
+
+
+def _common_root_connected(graph: ComponentGraph, a: str, b: str) -> bool:
+    na = graph.nodes.get(a)
+    nb = graph.nodes.get(b)
+    # The canonical split-across-files attack (§3.3): SKILL.md fans out to
+    # several references/*.md that never link to *each other* — only a
+    # direct-edge check would never see them as connected, which is exactly
+    # the evasion. Two files that are both part of the same reachable
+    # package (i.e. share the root as a common ancestor) are treated as
+    # connected too, just with a lighter corroboration weight (see
+    # corroborate_chains) — `direct` on the resulting Chain stays False so
+    # callers that need tighter proximity (e.g. corroborated_medium) can
+    # still tell the two apart.
+    return bool(na and nb and na.reachable_from_root and nb.reachable_from_root and graph.root)
+
+
+MAX_CHAIN_PAIRS = 20_000  # bounds the source x sink cross product (1.4: chain-explosion)
 
 
 def build_capability_chains(findings: list[Finding], graph: ComponentGraph) -> list[Chain]:
@@ -128,27 +157,25 @@ def build_capability_chains(findings: list[Finding], graph: ComponentGraph) -> l
     chains: list[Chain] = []
     idx = 0
 
-    def connected(a: str, b: str) -> bool:
-        if a == b:
-            return True
-        na = graph.nodes.get(a)
-        if na and b in na.edges_out:
-            return True
-        nb = graph.nodes.get(b)
-        if nb and a in nb.edges_out:
-            return True
-        return False
+    if len(sources) * len(sinks) > MAX_CHAIN_PAIRS:
+        # A pathological skill with hundreds of source/sink findings would
+        # otherwise make this a full unbounded cross product. Cap it rather
+        # than let one oversized package hang the scan for everyone else.
+        sources = sources[: max(1, MAX_CHAIN_PAIRS // max(1, len(sinks)))]
 
     for src in sources:
         for sink in sinks:
             if src is sink:
                 continue
             same_file = src.file == sink.file
-            via_graph = connected(src.file, sink.file)
-            if same_file or via_graph:
+            direct = same_file or _direct_edge(graph, src.file, sink.file)
+            via_graph = direct or _common_root_connected(graph, src.file, sink.file)
+            if via_graph:
                 idx += 1
                 cid = f"CHAIN-{idx}"
-                chains.append(Chain(cid, src, sink, same_file, via_graph))
+                chains.append(Chain(cid, src, sink, same_file, via_graph, direct))
                 src.chain_id = src.chain_id or cid
                 sink.chain_id = sink.chain_id or cid
+                src.chain_ids.append(cid)
+                sink.chain_ids.append(cid)
     return chains
