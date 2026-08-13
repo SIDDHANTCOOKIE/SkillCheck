@@ -3,8 +3,19 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
-backend/server.log
+*.log
 backend/skillcheck_reports.db
 backend/.pytest_cache/
+.pytest_cache/
+.coverage
+htmlcov/
 node_modules/
 .DS_Store
+.vscode/
+.idea/
+
+# Local secrets — real API keys (ANTHROPIC_API_KEY, OPENROUTER_API_KEY,
+# GEMINI_API_KEY) get set via .env for local dev; never commit it.
+.env
+.env.*
+!.env.example
