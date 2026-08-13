@@ -116,7 +116,8 @@ issues run into along the way.
 ## Docs
 
 - **[docs/ao.md](docs/ao.md)** — how AO was used on this project, and the issues encountered.
-- **[docs/design.md](docs/design.md)** — the frontend's design tokens, components, and non-goals.
+- **[docs/architecture.md](docs/architecture.md)** — the analysis model (pipeline, detectors, capability
+  taxonomy, corroboration, adjudication, verdict logic) and the frontend design system.
 
 ## Tests
 

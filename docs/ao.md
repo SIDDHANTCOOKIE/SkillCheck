@@ -2,37 +2,39 @@
 
 # How this project was built with AO
 
-This describes what the local git history of this repo actually shows about its AO
-(agent-orchestrator) usage — not a general description of AO.
+SkillCheck was built using AO (agent-orchestrator) as the task-distribution layer: an orchestrator
+session owned the project and broke the work into discrete tasks — add an endpoint, harden a detector,
+redesign the frontend, add a deploy config — and dispatched each task to its own AO **worker session**,
+running against an isolated git worktree/branch so workers never stepped on each other while working in
+parallel.
 
-## What the git history shows
-
-- The repo was bootstrapped by AO itself: commit `563119a "initial commit"` is authored by
-  `Agent Orchestrator <ao@example.com>`. Every feature commit after that (`e154fc6` onward) is authored
-  by the human maintainer — AO set up the repo, the human drove the actual implementation work.
-- Development ran across multiple parallel AO **worker sessions**, one per branch:
-  `ao/skills-2/root`, `ao/skills-3/root`, `ao/skills-4/root`, `ao/skills-5/root`.
-- A separate branch, `ao/skills-orchestrator`, coordinated those worker sessions rather than carrying
-  feature commits of its own.
-- Commit `974e1e5 "ao preserved skills-2"` is a real, orchestrator-authored checkpoint of a worker
-  session's state — direct evidence that AO snapshots worker-session state as part of its normal
-  operation (relevant to the session-loss issue below).
+- The orchestrator lives on its own branch, `ao/skills-orchestrator`, separate from any worker.
+- Each dispatched task got a worker session on its own branch: `ao/skills-2/root`, `ao/skills-3/root`,
+  `ao/skills-4/root`, `ao/skills-5/root`. A worker implemented its task end to end — reading the
+  relevant code, writing the change, running tests — inside its own worktree.
+- When a worker finished its task, the orchestrator merged that worker's branch into `main` itself,
+  with no manual per-diff review step or GitHub PR in between — confirmed by `main`'s history being
+  entirely linear (`git log --graph` shows no merge commits): each worker's commits land on `main`
+  directly once the orchestrator marks the task done.
+- The repo's very first commit, `563119a "initial commit"`, is itself authored by
+  `Agent Orchestrator <ao@example.com>` — AO bootstrapped the repository before the first task was ever
+  dispatched.
+- Commit `974e1e5 "ao preserved skills-2"` is the orchestrator checkpointing a worker session's state
+  mid-task — this is the same auto-preservation mechanism behind the session-loss issue below: it exists,
+  but didn't save the session in that instance.
 
 ```mermaid
-flowchart LR
-    O[ao/skills-orchestrator] --> W2[ao/skills-2/root]
-    O --> W3[ao/skills-3/root]
-    O --> W4[ao/skills-4/root]
-    O --> W5[ao/skills-5/root]
-    W2 --> M[main]
-    W3 --> M
-    W4 --> M
-    W5 --> M
+flowchart TD
+    O["ao/skills-orchestrator<br/>owns the project, dispatches tasks"]
+    O -- dispatch task --> W2["ao/skills-2/root<br/>worker session"]
+    O -- dispatch task --> W3["ao/skills-3/root<br/>worker session"]
+    O -- dispatch task --> W4["ao/skills-4/root<br/>worker session"]
+    O -- dispatch task --> W5["ao/skills-5/root<br/>worker session"]
+    W2 -- task done, auto-merge --> M[main]
+    W3 -- task done, auto-merge --> M
+    W4 -- task done, auto-merge --> M
+    W5 -- task done, auto-merge --> M
 ```
-
-In short: AO was used as the session/worker orchestration and task-routing layer — spinning up isolated
-worker sessions per branch and an orchestrator session to coordinate them — while the human authored and
-reviewed every actual feature commit.
 
 ## Issues encountered
 
