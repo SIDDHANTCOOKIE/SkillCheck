@@ -4,7 +4,6 @@ Evidence-backed static-analysis scanner for AI-agent `SKILL.md` packages. It nev
 only `MALICIOUS`, `DANGEROUS`, `SUSPICIOUS`, `UNVERIFIED`, or `NO_FINDINGS`, each backed by quoted
 evidence, a capability label, and a coverage ledger of what was and wasn't analysed.
 
-<!-- TODO: add a screenshot of the running app (paste/upload/GitHub-URL tabs + a rendered verdict) -->
 ![Project screenshot](assets/app-screenshot.png)
 
 ## What it does
@@ -106,14 +105,12 @@ variables, falling back to a deterministic heuristic tiering when no LLM key is 
 curls that health endpoint every 10 minutes (plus manual dispatch) to stop Render's free-tier instance
 from cold-starting; it is not a test/build/deploy CI pipeline.
 
-<!-- TODO: add a screenshot of the AO kanban board used to run this project -->
 ![AO kanban board](assets/kanban-board.png)
 
 This project was built with parallel AO (agent-orchestrator) worker sessions — see
 **[How this project was built with AO](docs/ao.md)** for what the git history actually shows, and the
 issues run into along the way.
 
-<!-- TODO: add a screenshot related to the AO issues described in docs/ao.md -->
 ![AO issue example](assets/ao-issue.png)
 
 ## Docs
