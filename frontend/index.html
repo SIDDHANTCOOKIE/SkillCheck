@@ -4,93 +4,84 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>SkillCheck</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 4 7v9c0 8 5.2 12.9 12 14 6.8-1.1 12-6 12-14V7z' fill='%232f6fed'/%3E%3Ccircle cx='13.4' cy='12.4' r='5' fill='white'/%3E%3Cline x1='17.2' y1='16.2' x2='22.6' y2='21.6' stroke='white' stroke-width='2.8' stroke-linecap='round'/%3E%3Cpath d='M10.9 12.5 12.7 14.3 15.9 10.2' fill='none' stroke='%232f6fed' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' rx='5' fill='%23000'/%3E%3Ccircle cx='11' cy='11' r='3' fill='none' stroke='%234d8dff' stroke-width='1.6'/%3E%3Ccircle cx='23' cy='11' r='2.4' fill='none' stroke='%23555' stroke-width='1.4'/%3E%3Ccircle cx='11' cy='23' r='2.4' fill='none' stroke='%23555' stroke-width='1.4'/%3E%3Ccircle cx='23' cy='23' r='3' fill='%23ff5a52'/%3E%3Cline x1='13.2' y1='12.6' x2='21' y2='21' stroke='%23ff5a52' stroke-width='1.4'/%3E%3Cline x1='11' y1='14' x2='11' y2='20.6' stroke='%23555' stroke-width='1.2'/%3E%3Cline x1='13.4' y1='11' x2='20.6' y2='11' stroke='%23555' stroke-width='1.2'/%3E%3C/svg%3E" />
 <style>
-  /* Design direction: glass over depth, one restrained accent hue — no
-     multi-color gradients. Panels are translucent + blurred (real
-     backdrop-filter), floating above a single soft monochrome glow that
-     drifts slowly behind everything. Dark mode is genuinely near-black
-     (#030305), not dark grey — depth comes from the glow and glass edges,
-     not from lifting the base background. */
+  /* Design direction: premium technical dark mode. True-black background,
+     flat near-black surfaces (tonal steps, not translucent glass), thin
+     1px borders, one restrained accent, functional (non-decorative)
+     severity colors. Hierarchy comes from spacing/type/contrast, not
+     blur or glow. No gradients as backgrounds; the only gradient in this
+     file is not one — there isn't one. */
   :root {
-    --bg: #f4f3f7;
-    --bg-elev: #ffffff;
-    --surface: #ffffff;
-    --border: #dedde5;
-    --text: #15151b;
-    --text-dim: #62616e;
-    --accent: #3457d5;
+    --bg: #fafafa;
+    --surface-1: #ffffff;
+    --surface-2: #f1f1f3;
+    --surface-hover: #ececee;
+    --border: rgba(10,10,15,0.10);
+    --border-strong: rgba(10,10,15,0.18);
+    --text: #16161a;
+    --text-dim: #68686f;
+    --accent: #2f5fd6;
     --accent-contrast: #ffffff;
+    --accent-tint: rgba(47,95,214,0.09);
 
-    --glass-bg: rgba(255,255,255,0.60);
-    --glass-bg-strong: rgba(255,255,255,0.84);
-    --glass-border: rgba(20,20,35,0.09);
-    --glass-shadow: 0 8px 28px rgba(20,20,50,0.08), 0 1px 1px rgba(20,20,50,0.05);
-    --glass-blur: 20px;
+    --safe: #17824f; --safe-bg: rgba(23,130,79,0.08);
+    --suspicious: #9a5b06; --suspicious-bg: rgba(154,91,6,0.08);
+    --dangerous: #c22a20; --dangerous-bg: rgba(194,42,32,0.07);
+    --high: #b8480c; --high-bg: rgba(184,72,12,0.07);
+    --inconclusive: #55546c; --inconclusive-bg: rgba(85,84,108,0.08);
 
-    --safe: #14804f; --safe-bg: rgba(20,128,79,0.10); --safe-glow: rgba(20,128,79,0.24);
-    --suspicious: #a1590a; --suspicious-bg: rgba(161,89,10,0.10); --suspicious-glow: rgba(161,89,10,0.24);
-    --dangerous: #c22a20; --dangerous-bg: rgba(194,42,32,0.09); --dangerous-glow: rgba(194,42,32,0.28);
-    --high: #b8480c; --high-bg: rgba(184,72,12,0.09); --high-glow: rgba(184,72,12,0.26);
-    --inconclusive: #55546c; --inconclusive-bg: rgba(85,84,108,0.10); --inconclusive-glow: rgba(85,84,108,0.2);
-    --accent-glow: rgba(52,87,213,0.22);
-
-    --code-bg: rgba(20,19,40,0.05);
-    --header-bg: rgba(244,243,247,0.62);
-
-    --aurora-color: #3457d5;
-    --aurora-op: 0.14;
+    --code-bg: rgba(10,10,15,0.04);
+    --header-bg: rgba(250,250,250,0.94);
 
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    --radius-sm: 8px; --radius: 14px; --radius-lg: 18px;
+    --radius-sm: 6px; --radius: 10px; --radius-lg: 14px;
     color-scheme: light;
   }
   :root[data-theme="dark"] {
-    --bg: #030305; --bg-elev: #08080c; --surface: #0c0c12; --border: #232230;
-    --text: #f3f2fb; --text-dim: #9897ad;
-    --accent: #7c9bff; --accent-contrast: #05050a;
+    --bg: #000000;
+    --surface-1: #0a0a0a;
+    --surface-2: #101010;
+    --surface-hover: #161616;
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.16);
+    --text: #f4f4f5;
+    --text-dim: #8b8b92;
+    --accent: #5b8fff;
+    --accent-contrast: #04070d;
+    --accent-tint: rgba(91,143,255,0.10);
 
-    --glass-bg: rgba(255,255,255,0.045);
-    --glass-bg-strong: rgba(255,255,255,0.08);
-    --glass-border: rgba(255,255,255,0.10);
-    --glass-shadow: 0 8px 36px rgba(0,0,0,0.65), 0 1px 1px rgba(255,255,255,0.04) inset;
-    --glass-blur: 22px;
+    --safe: #34d67f; --safe-bg: rgba(52,214,127,0.10);
+    --suspicious: #ffb020; --suspicious-bg: rgba(255,176,32,0.10);
+    --dangerous: #ff5a52; --dangerous-bg: rgba(255,90,82,0.12);
+    --high: #ff8a4c; --high-bg: rgba(255,138,76,0.10);
+    --inconclusive: #9a9aa3; --inconclusive-bg: rgba(154,154,163,0.10);
 
-    --safe: #3fd694; --safe-bg: rgba(63,214,148,0.10); --safe-glow: rgba(63,214,148,0.3);
-    --suspicious: #ffb454; --suspicious-bg: rgba(255,180,84,0.10); --suspicious-glow: rgba(255,180,84,0.3);
-    --dangerous: #ff6259; --dangerous-bg: rgba(255,98,89,0.12); --dangerous-glow: rgba(255,98,89,0.4);
-    --high: #ff8f52; --high-bg: rgba(255,143,82,0.10); --high-glow: rgba(255,143,82,0.35);
-    --inconclusive: #aeadc4; --inconclusive-bg: rgba(174,173,196,0.10); --inconclusive-glow: rgba(174,173,196,0.24);
-    --accent-glow: rgba(124,155,255,0.28);
-
-    --code-bg: rgba(0,0,0,0.35);
-    --header-bg: rgba(3,3,5,0.58);
-
-    --aurora-color: #5b7dff;
-    --aurora-op: 0.16;
+    --code-bg: rgba(255,255,255,0.03);
+    --header-bg: rgba(0,0,0,0.92);
     color-scheme: dark;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #030305; --bg-elev: #08080c; --surface: #0c0c12; --border: #232230;
-      --text: #f3f2fb; --text-dim: #9897ad;
-      --accent: #7c9bff; --accent-contrast: #05050a;
-      --glass-bg: rgba(255,255,255,0.045);
-      --glass-bg-strong: rgba(255,255,255,0.08);
-      --glass-border: rgba(255,255,255,0.10);
-      --glass-shadow: 0 8px 36px rgba(0,0,0,0.65), 0 1px 1px rgba(255,255,255,0.04) inset;
-      --glass-blur: 22px;
-      --safe: #3fd694; --safe-bg: rgba(63,214,148,0.10); --safe-glow: rgba(63,214,148,0.3);
-      --suspicious: #ffb454; --suspicious-bg: rgba(255,180,84,0.10); --suspicious-glow: rgba(255,180,84,0.3);
-      --dangerous: #ff6259; --dangerous-bg: rgba(255,98,89,0.12); --dangerous-glow: rgba(255,98,89,0.4);
-      --high: #ff8f52; --high-bg: rgba(255,143,82,0.10); --high-glow: rgba(255,143,82,0.35);
-      --inconclusive: #aeadc4; --inconclusive-bg: rgba(174,173,196,0.10); --inconclusive-glow: rgba(174,173,196,0.24);
-      --accent-glow: rgba(124,155,255,0.28);
-      --code-bg: rgba(0,0,0,0.35);
-      --header-bg: rgba(3,3,5,0.58);
-      --aurora-color: #5b7dff;
-      --aurora-op: 0.16;
+      --bg: #000000;
+      --surface-1: #0a0a0a;
+      --surface-2: #101010;
+      --surface-hover: #161616;
+      --border: rgba(255,255,255,0.08);
+      --border-strong: rgba(255,255,255,0.16);
+      --text: #f4f4f5;
+      --text-dim: #8b8b92;
+      --accent: #5b8fff;
+      --accent-contrast: #04070d;
+      --accent-tint: rgba(91,143,255,0.10);
+      --safe: #34d67f; --safe-bg: rgba(52,214,127,0.10);
+      --suspicious: #ffb020; --suspicious-bg: rgba(255,176,32,0.10);
+      --dangerous: #ff5a52; --dangerous-bg: rgba(255,90,82,0.12);
+      --high: #ff8a4c; --high-bg: rgba(255,138,76,0.10);
+      --inconclusive: #9a9aa3; --inconclusive-bg: rgba(154,154,163,0.10);
+      --code-bg: rgba(255,255,255,0.03);
+      --header-bg: rgba(0,0,0,0.92);
       color-scheme: dark;
     }
   }
@@ -100,196 +91,202 @@
   body {
     background-color: var(--bg); color: var(--text); font-family: var(--sans);
     font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased;
-    transition: background-color 0.2s ease, color 0.2s ease; position: relative;
-    overflow-x: hidden;
-  }
-
-  /* --- animated SVG background: one hue, two soft masses, slow drift.
-     This is ambient lighting, not decoration — it should be almost
-     subliminal at rest and only register as "there's depth here". */
-  .aurora { position: fixed; inset: 0; z-index: -1; width: 100%; height: 100%; overflow: hidden; }
-  .aurora svg { position: absolute; width: 140%; height: 140%; left: -20%; top: -20%; }
-  .aurora circle { opacity: var(--aurora-op); }
-  .aurora .blob-1 { animation: drift1 34s ease-in-out infinite alternate; }
-  .aurora .blob-2 { animation: drift2 40s ease-in-out infinite alternate; }
-  @keyframes drift1 { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(30px,40px) scale(1.06); } }
-  @keyframes drift2 { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(-30px,-20px) scale(0.95); } }
-  .grain { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-    background-image: radial-gradient(rgba(127,127,127,0.5) 0.5px, transparent 0.5px);
-    background-size: 26px 26px; opacity: 0.1; }
-  @media (prefers-reduced-motion: reduce) {
-    .aurora .blob-1, .aurora .blob-2 { animation: none; }
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   .site-header {
     position: sticky; top: 0; z-index: 10; background: var(--header-bg);
-    border-bottom: 1px solid var(--glass-border); backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+    border-bottom: 1px solid var(--border);
   }
   .site-header-inner {
-    max-width: 980px; margin: 0 auto; padding: 14px 20px;
+    max-width: 960px; margin: 0 auto; padding: 16px 24px;
     display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   }
-  .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; min-width: 0; }
-  .brand svg { display: block; flex: none; filter: drop-shadow(0 0 7px var(--accent-glow)); }
-  .brand .shield-check { stroke-dasharray: 14; stroke-dashoffset: 14; animation: draw-check 1s 0.2s ease-out forwards; }
-  @keyframes draw-check { to { stroke-dashoffset: 0; } }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 650; font-size: 0.98rem; letter-spacing: -0.01em; min-width: 0; }
+  .brand svg { display: block; flex: none; }
+  .brand .flagged-node { animation: node-ping 1s 0.4s ease-out; transform-origin: center; }
+  @keyframes node-ping { 0% { opacity: 0; transform: scale(0.4); } 60% { opacity: 1; } 100% { opacity: 1; transform: scale(1); } }
   .beta-tag {
     font-size: 0.62rem; font-family: var(--mono); font-weight: 600; padding: 2px 7px;
-    border-radius: 999px; background: var(--glass-bg-strong); color: var(--accent);
-    border: 1px solid var(--glass-border); margin-left: 4px; text-transform: uppercase; letter-spacing: 0.08em;
+    border-radius: 4px; background: var(--surface-2); color: var(--text-dim);
+    border: 1px solid var(--border); margin-left: 2px; text-transform: uppercase; letter-spacing: 0.08em;
   }
 
   .theme-toggle {
-    background: var(--glass-bg); border: 1px solid var(--glass-border); color: var(--text-dim);
-    width: 38px; height: 38px; border-radius: 999px; cursor: pointer;
+    background: var(--surface-1); border: 1px solid var(--border); color: var(--text-dim);
+    width: 34px; height: 34px; border-radius: var(--radius-sm); cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; padding: 0;
-    backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
-    transition: color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
   }
-  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); transform: scale(1.06); }
+  .theme-toggle:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-hover); }
 
-  main { max-width: 980px; margin: 0 auto; padding: 40px 20px 96px; position: relative; }
+  main { max-width: 960px; margin: 0 auto; padding: 56px 24px 96px; }
   @media (max-width: 480px) {
-    main { padding: 28px 16px 72px; }
+    main { padding: 36px 16px 72px; }
     .card { padding: 18px; }
   }
 
-  .hero { margin-bottom: 44px; padding-top: 8px; }
-  .eyebrow {
-    display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px;
-    border-radius: 999px; background: var(--glass-bg); border: 1px solid var(--glass-border);
-    backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
-    font-family: var(--mono); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em;
-    text-transform: uppercase; color: var(--text-dim); margin-bottom: 22px;
+  /* --- hero: text + a compact technical diagram, not a big illustration -- */
+  .hero { display: flex; align-items: center; gap: 40px; margin-bottom: 56px; }
+  .hero-text { flex: 1; min-width: 0; }
+  .hero-art { flex: none; width: 200px; }
+  .hero-art svg { display: block; width: 100%; height: auto; }
+  @media (max-width: 760px) {
+    .hero { flex-direction: column; align-items: flex-start; gap: 28px; }
+    .hero-art { width: 150px; align-self: flex-end; }
   }
-  .eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 
-  h1 { font-size: clamp(1.9rem, 1.3rem + 2.2vw, 2.85rem); font-weight: 750; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 18px; color: var(--text); }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px;
+    border-radius: var(--radius-sm); background: var(--surface-1); border: 1px solid var(--border);
+    font-family: var(--mono); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--text-dim); margin-bottom: 20px;
+  }
+  .eyebrow-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+
+  h1 { font-size: clamp(1.8rem, 1.3rem + 1.9vw, 2.6rem); font-weight: 680; letter-spacing: -0.03em; line-height: 1.12; margin: 0 0 16px; color: var(--text); }
   h1 .accent-word { color: var(--accent); }
-  .subtitle { color: var(--text-dim); font-size: 1.05rem; line-height: 1.7; margin: 0; max-width: 620px; font-weight: 400; }
+  .subtitle { color: var(--text-dim); font-size: 1rem; line-height: 1.65; margin: 0; max-width: 560px; font-weight: 400; }
 
   .how-strip {
-    display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 36px 0 0; padding-top: 24px;
-    border-top: 1px solid var(--glass-border);
+    display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 40px 0 0; padding-top: 22px;
+    border-top: 1px solid var(--border);
   }
   .how-step {
-    display: flex; align-items: baseline; gap: 8px; font-size: 0.8rem; color: var(--text-dim);
+    display: flex; align-items: baseline; gap: 8px; font-size: 0.78rem; color: var(--text-dim);
     flex: 1 1 200px; min-width: 0;
   }
   .how-step .step-num { font-family: var(--mono); font-size: 10.5px; color: var(--accent); font-weight: 700; flex-shrink: 0; }
-  .how-step b { color: var(--text); font-weight: 650; flex-shrink: 0; }
+  .how-step b { color: var(--text); font-weight: 600; flex-shrink: 0; }
   .how-step span { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @media (max-width: 640px) { .how-step span { white-space: normal; } }
 
-  /* --- glass panel base ------------------------------------------------ */
+  /* --- flat surface panel base: tonal, not translucent ------------------ */
   .card {
-    background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius);
-    padding: 26px; margin-bottom: 20px; box-shadow: var(--glass-shadow);
-    backdrop-filter: blur(var(--glass-blur)) saturate(1.3); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 24px; margin-bottom: 18px;
   }
 
-  .example-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
-  .example-label { font-size: 0.78rem; font-weight: 600; color: var(--text-dim); font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em; }
+  .example-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .example-label { font-size: 0.76rem; font-weight: 600; color: var(--text-dim); font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; }
   .hint { font-size: 12.5px; color: var(--text-dim); margin-top: 8px; line-height: 1.6; }
   .chip {
-    background: var(--glass-bg); border: 1px solid var(--glass-border); color: var(--text-dim);
-    border-radius: 999px; padding: 6px 14px; font-size: 0.8rem; cursor: pointer; font-family: var(--mono);
-    backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
-    transition: color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim);
+    border-radius: 999px; padding: 5px 12px; font-size: 0.78rem; cursor: pointer; font-family: var(--mono);
+    transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
   }
-  .chip:hover { color: var(--text); border-color: var(--accent); transform: translateY(-1px); }
-  .chip.active { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .chip:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-hover); }
+  .chip.active { color: var(--accent); border-color: var(--accent); background: var(--accent-tint); }
 
-  .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .tabs { display: inline-flex; gap: 2px; margin-bottom: 20px; padding: 3px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); flex-wrap: wrap; }
   .tab {
-    background: var(--glass-bg); border: 1px solid var(--glass-border); color: var(--text-dim);
-    padding: 9px 18px; border-radius: 999px; cursor: pointer; font-size: 13px; font-weight: 500;
-    font-family: var(--mono); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
-    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    background: transparent; border: 1px solid transparent; color: var(--text-dim);
+    padding: 7px 14px; border-radius: 5px; cursor: pointer; font-size: 12.5px; font-weight: 550;
+    font-family: var(--mono); transition: color 0.12s ease, background 0.12s ease;
   }
-  .tab.active {
-    background: var(--accent); color: var(--accent-contrast);
-    border-color: transparent; box-shadow: 0 4px 16px var(--accent-glow);
-  }
-  .tab:not(.active):hover { border-color: var(--accent); color: var(--accent); }
+  .tab.active { background: var(--surface-1); color: var(--text); border-color: var(--border); }
+  .tab:not(.active):hover { color: var(--text); }
 
-  label { font-size: 12px; color: var(--text-dim); display: block; margin-bottom: 6px; font-weight: 600; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; }
+  label { font-size: 11.5px; color: var(--text-dim); display: block; margin-bottom: 6px; font-weight: 600; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; }
   textarea {
-    width: 100%; min-height: 220px; background: var(--glass-bg); color: var(--text);
-    border: 1px solid var(--glass-border); border-radius: var(--radius-sm); padding: 14px;
+    width: 100%; min-height: 220px; background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px;
     font-family: var(--mono); font-size: 13px; resize: vertical; line-height: 1.55;
-    backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
   }
-  textarea:focus, input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  textarea:focus, input[type=text]:focus { outline: none; border-color: var(--accent); }
   input[type=text] {
-    background: var(--glass-bg); color: var(--text); border: 1px solid var(--glass-border);
-    border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; width: 280px; max-width: 100%; font-family: var(--mono);
-    backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13px; width: 280px; max-width: 100%; font-family: var(--mono);
   }
   input[type=file] { color: var(--text-dim); font-size: 13px; }
   .row { display: flex; gap: 16px; align-items: end; margin-bottom: 12px; flex-wrap: wrap; }
 
   button.primary {
     background: var(--accent); color: var(--accent-contrast);
-    border: 1px solid transparent;
-    border-radius: 999px; padding: 13px 26px; font-size: 14px; cursor: pointer; font-weight: 650;
-    font-family: inherit; letter-spacing: -0.01em;
-    box-shadow: 0 4px 16px var(--accent-glow);
-    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm); padding: 11px 22px; font-size: 13.5px; cursor: pointer; font-weight: 600;
+    font-family: inherit; letter-spacing: -0.005em;
+    transition: filter 0.12s ease;
   }
-  button.primary:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
-  button.primary:active:not(:disabled) { transform: translateY(0); filter: brightness(0.96); }
-  button.primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.12); }
+  button.primary:active:not(:disabled) { filter: brightness(0.94); }
+  button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
   .hidden { display: none !important; }
 
-  .verdict-badge { display: inline-flex; align-items: center; gap: 9px; padding: 10px 18px; border-radius: 999px; font-weight: 650; font-size: 1.05rem; letter-spacing: -0.01em; font-family: var(--mono); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); }
-  .v-MALICIOUS { background: var(--dangerous-bg); color: var(--dangerous); border: 1px solid var(--dangerous); box-shadow: 0 0 20px var(--dangerous-glow); }
-  .v-DANGEROUS { background: var(--high-bg); color: var(--high); border: 1px solid var(--high); box-shadow: 0 0 16px var(--high-glow); }
-  .v-SUSPICIOUS { background: var(--suspicious-bg); color: var(--suspicious); border: 1px solid var(--suspicious); box-shadow: 0 0 12px var(--suspicious-glow); }
-  .v-UNVERIFIED { background: var(--inconclusive-bg); color: var(--inconclusive); border: 1px solid var(--inconclusive); box-shadow: 0 0 10px var(--inconclusive-glow); }
-  .v-NO_FINDINGS { background: var(--safe-bg); color: var(--safe); border: 1px solid var(--safe); box-shadow: 0 0 12px var(--safe-glow); }
+  .verdict-badge { display: inline-flex; align-items: center; gap: 9px; padding: 9px 16px; border-radius: var(--radius-sm); font-weight: 650; font-size: 1rem; letter-spacing: -0.01em; font-family: var(--mono); border: 1px solid; }
+  .verdict-badge svg { flex: none; }
+  .v-MALICIOUS { background: var(--dangerous-bg); color: var(--dangerous); border-color: var(--dangerous); }
+  .v-DANGEROUS { background: var(--high-bg); color: var(--high); border-color: var(--high); }
+  .v-SUSPICIOUS { background: var(--suspicious-bg); color: var(--suspicious); border-color: var(--suspicious); }
+  .v-UNVERIFIED { background: var(--inconclusive-bg); color: var(--inconclusive); border-color: var(--inconclusive); }
+  .v-NO_FINDINGS { background: var(--safe-bg); color: var(--safe); border-color: var(--safe); }
 
   .summary-line { margin-top: 14px; color: var(--text-dim); font-size: 13.5px; line-height: 1.6; }
 
   .section-title {
-    font-size: 0.8rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase;
-    letter-spacing: 0.09em; font-family: var(--mono); margin: 34px 0 14px; display: flex; align-items: center; gap: 12px;
+    font-size: 0.78rem; font-weight: 700; color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: 0.08em; font-family: var(--mono); margin: 32px 0 14px; display: flex; align-items: center; gap: 12px;
   }
-  .section-title::after { content: ""; flex: 1; height: 1px; background: var(--glass-border); }
+  .section-title::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 
+  /* --- finding cards: a real severity-driven alert, not a generic list
+     row. Icon chip + tonal panel background + heavier left rail. -------- */
   .finding-card {
-    background: var(--glass-bg); border: 1px solid var(--glass-border); border-left: 3px solid var(--glass-border);
-    border-radius: var(--radius); padding: 18px 20px; margin-bottom: 14px;
-    backdrop-filter: blur(var(--glass-blur)) saturate(1.3); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
-    box-shadow: var(--glass-shadow);
+    display: flex; gap: 14px;
+    background: var(--surface-1); border: 1px solid var(--border); border-left: 3px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px; margin-bottom: 12px;
   }
-  .finding-card.sev-critical { border-left-color: var(--dangerous); }
-  .finding-card.sev-high { border-left-color: var(--high); }
-  .finding-card.sev-medium { border-left-color: var(--suspicious); }
-  .finding-card.sev-low { border-left-color: var(--text-dim); }
+  .finding-card.sev-critical { border-left-color: var(--dangerous); background: var(--dangerous-bg); }
+  .finding-card.sev-high { border-left-color: var(--high); background: var(--high-bg); }
+  .finding-card.sev-medium { border-left-color: var(--suspicious); background: var(--suspicious-bg); }
+  .finding-card.sev-low { border-left-color: var(--border-strong); }
+  .finding-icon {
+    flex: none; width: 30px; height: 30px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center;
+    background: var(--surface-1); border: 1px solid var(--border);
+  }
+  .finding-card.sev-critical .finding-icon { color: var(--dangerous); border-color: var(--dangerous); }
+  .finding-card.sev-high .finding-icon { color: var(--high); border-color: var(--high); }
+  .finding-card.sev-medium .finding-icon { color: var(--suspicious); border-color: var(--suspicious); }
+  .finding-card.sev-low .finding-icon { color: var(--text-dim); }
+  .finding-body { flex: 1; min-width: 0; }
   .finding-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-  .finding-title { font-weight: 650; font-size: 14px; font-family: var(--mono); }
+  .finding-title { font-weight: 650; font-size: 14px; font-family: var(--mono); letter-spacing: -0.01em; }
   .badges { display: flex; gap: 6px; flex-wrap: wrap; }
-  .badge { font-size: 10.5px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--glass-border); color: var(--text-dim); font-weight: 700; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; background: var(--glass-bg-strong); }
-  .badge.tier-confirmed { color: #fff; border-color: var(--dangerous); background: var(--dangerous); }
-  .badge.tier-likely { color: #fff; border-color: var(--high); background: var(--high); }
-  .badge.tier-possible { color: #fff; border-color: var(--suspicious); background: var(--suspicious); }
-  .badge.tier-insufficient_context { color: var(--text-dim); border-color: var(--glass-border); }
+  .badge { font-size: 10px; padding: 2.5px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); font-weight: 700; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-2); }
+  .badge.tier-confirmed { color: var(--accent-contrast); border-color: var(--dangerous); background: var(--dangerous); }
+  .badge.tier-likely { color: var(--accent-contrast); border-color: var(--high); background: var(--high); }
+  .badge.tier-possible { color: var(--accent-contrast); border-color: var(--suspicious); background: var(--suspicious); }
+  .badge.tier-insufficient_context { color: var(--text-dim); border-color: var(--border); }
   .badge.tier-false_positive_suspected { color: var(--text-dim); }
   .finding-card pre {
     font-family: var(--mono); font-size: 12.5px; line-height: 1.7; background: var(--code-bg);
-    border: 1px solid var(--glass-border); border-radius: var(--radius-sm); padding: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px;
     overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin: 10px 0; color: var(--text);
   }
   .finding-card .meta { font-size: 12.5px; color: var(--text-dim); line-height: 1.7; }
   .finding-card .meta b { color: var(--text); font-weight: 650; }
   .finding-card .why { font-size: 13.5px; line-height: 1.6; margin: 8px 0; color: var(--text); font-weight: 450; }
 
+  /* --- coverage summary: a stat + segmented bar above the raw table ----- */
+  .coverage-stats { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
+  .coverage-percent { font-family: var(--mono); font-size: 2.2rem; font-weight: 700; letter-spacing: -0.03em; color: var(--text); flex: none; }
+  .coverage-percent span { display: block; font-family: var(--sans); font-size: 0.68rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.07em; margin-top: 2px; }
+  .coverage-main { flex: 1; min-width: 220px; }
+  .coverage-bar { display: flex; width: 100%; height: 8px; border-radius: 999px; overflow: hidden; background: var(--surface-2); border: 1px solid var(--border); }
+  .coverage-bar .seg { height: 100%; }
+  .coverage-bar .seg-analysed { background: var(--safe); }
+  .coverage-bar .seg-partial { background: var(--suspicious); }
+  .coverage-bar .seg-unanalysed { background: var(--dangerous); }
+  .coverage-legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+  .coverage-legend .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .coverage-legend .dot.safe { background: var(--safe); }
+  .coverage-legend .dot.suspicious { background: var(--suspicious); }
+  .coverage-legend .dot.dangerous { background: var(--dangerous); }
+
   .table-scroll { overflow-x: auto; }
   table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 13px; font-family: var(--mono); }
-  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--glass-border); white-space: nowrap; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
   td:first-child { white-space: normal; word-break: break-all; }
   th { color: var(--text-dim); font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; }
   td.status-analysed { color: var(--safe); font-weight: 600; }
@@ -297,52 +294,37 @@
   td.status-unanalysed { color: var(--dangerous); font-weight: 600; }
 
   #loading { color: var(--text-dim); font-size: 13px; display: inline-flex; align-items: center; gap: 10px; font-family: var(--mono); }
-  .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--glass-border); border-top-color: var(--accent); animation: spin 0.7s linear infinite; }
+  .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent); animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   #error {
     background: var(--dangerous-bg); border: 1px solid var(--dangerous); color: var(--dangerous);
-    padding: 14px 18px; border-radius: var(--radius-sm); margin-top: 14px; font-size: 0.92rem; line-height: 1.5; font-weight: 500;
-    backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+    padding: 13px 16px; border-radius: var(--radius-sm); margin-top: 14px; font-size: 0.9rem; line-height: 1.5; font-weight: 500;
   }
 
-  .site-footer { max-width: 980px; margin: 40px auto 0; padding: 24px; border-top: 1px solid var(--glass-border); color: var(--text-dim); font-size: 0.85rem; text-align: center; }
+  .site-footer { max-width: 960px; margin: 40px auto 0; padding: 24px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 0.82rem; text-align: center; }
 
   #permalinkLine { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; min-width: 0; }
   #permalinkLine a { color: var(--accent); word-break: break-all; }
   #permalinkLine button {
-    background: var(--glass-bg); border: 1px solid var(--glass-border); color: var(--text-dim);
-    border-radius: 999px; padding: 4px 12px; font-size: 11px; cursor: pointer; font-family: var(--mono);
-    backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim);
+    border-radius: var(--radius-sm); padding: 4px 10px; font-size: 11px; cursor: pointer; font-family: var(--mono);
   }
-  #permalinkLine button:hover { color: var(--text); border-color: var(--text-dim); }
+  #permalinkLine button:hover { color: var(--text); border-color: var(--border-strong); }
 </style>
 </head>
 <body>
 
-<div class="aurora" aria-hidden="true">
-  <svg viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
-    <defs>
-      <filter id="auroraBlur" x="-50%" y="-50%" width="200%" height="200%">
-        <feGaussianBlur stdDeviation="110" />
-      </filter>
-    </defs>
-    <g filter="url(#auroraBlur)">
-      <circle class="blob-1" cx="150" cy="120" r="280" fill="var(--aurora-color)" />
-      <circle class="blob-2" cx="880" cy="760" r="320" fill="var(--aurora-color)" />
-    </g>
-  </svg>
-</div>
-<div class="grain" aria-hidden="true"></div>
-
 <header class="site-header">
   <div class="site-header-inner">
     <div class="brand">
-      <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M16 2 4 7v9c0 8 5.2 12.9 12 14 6.8-1.1 12-6 12-14V7z" fill="currentColor" opacity="0.12"/>
-        <path d="M16 2 4 7v9c0 8 5.2 12.9 12 14 6.8-1.1 12-6 12-14V7z" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
-        <circle cx="13.4" cy="12.4" r="4.6" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
-        <line x1="16.8" y1="15.8" x2="21.5" y2="20.5" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round"/>
-        <path class="shield-check" d="M11.2 12.5 12.8 14.1 15.6 10.4" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="11" cy="11" r="3" fill="none" stroke="var(--accent)" stroke-width="1.7"/>
+        <circle cx="23" cy="11" r="2.3" fill="none" stroke="var(--text-dim)" stroke-width="1.4"/>
+        <circle cx="11" cy="23" r="2.3" fill="none" stroke="var(--text-dim)" stroke-width="1.4"/>
+        <line x1="13.2" y1="12.6" x2="21.2" y2="21.2" stroke="var(--dangerous)" stroke-width="1.4"/>
+        <line x1="11" y1="14" x2="11" y2="20.6" stroke="var(--text-dim)" stroke-width="1.1"/>
+        <line x1="13.4" y1="11" x2="20.6" y2="11" stroke="var(--text-dim)" stroke-width="1.1"/>
+        <circle class="flagged-node" cx="23" cy="23" r="2.9" fill="var(--dangerous)"/>
       </svg>
       <span>SkillCheck</span>
       <span class="beta-tag">Beta</span>
@@ -356,9 +338,37 @@
 
 <main>
   <div class="hero">
-    <span class="eyebrow"><span class="eyebrow-dot"></span> Static analysis · evidence-backed</span>
-    <h1>Is this skill safe to <span class="accent-word">install</span>?</h1>
-    <p class="subtitle">Paste a SKILL.md or upload a package. Every verdict carries the exact quoted span, the capability it uses, and what was left unanalysed — SkillCheck never says "safe" without showing its work.</p>
+    <div class="hero-text">
+      <span class="eyebrow"><span class="eyebrow-dot"></span> Static analysis · evidence-backed</span>
+      <h1>Is this skill safe to <span class="accent-word">install</span>?</h1>
+      <p class="subtitle">Paste a SKILL.md or upload a package. Every verdict carries the exact quoted span, the capability it uses, and what was left unanalysed — SkillCheck never says "safe" without showing its work.</p>
+    </div>
+    <div class="hero-art" aria-hidden="true">
+      <!-- What the engine does, drawn: SKILL.md decomposes into a component
+           graph; most nodes stay clean, one path (accent) reaches a sink
+           that gets flagged (severity red). The dot matrix is the raw byte
+           surface everything else gets extracted from. -->
+      <svg viewBox="0 0 200 220" fill="none">
+        <g opacity="0.5">
+          <circle cx="8" cy="188" r="1.4" fill="var(--text-dim)"/><circle cx="18" cy="188" r="1.4" fill="var(--text-dim)"/><circle cx="28" cy="188" r="1.4" fill="var(--text-dim)"/><circle cx="38" cy="188" r="1.4" fill="var(--text-dim)"/>
+          <circle cx="8" cy="198" r="1.4" fill="var(--text-dim)"/><circle cx="18" cy="198" r="1.4" fill="var(--text-dim)"/><circle cx="28" cy="198" r="1.4" fill="var(--text-dim)"/><circle cx="38" cy="198" r="1.4" fill="var(--text-dim)"/>
+          <circle cx="8" cy="208" r="1.4" fill="var(--text-dim)"/><circle cx="18" cy="208" r="1.4" fill="var(--text-dim)"/><circle cx="28" cy="208" r="1.4" fill="var(--text-dim)"/><circle cx="38" cy="208" r="1.4" fill="var(--text-dim)"/>
+        </g>
+        <rect x="76" y="10" width="46" height="58" rx="4" fill="none" stroke="var(--border-strong)" stroke-width="1.4"/>
+        <line x1="86" y1="26" x2="112" y2="26" stroke="var(--text-dim)" stroke-width="1.3"/>
+        <line x1="86" y1="35" x2="112" y2="35" stroke="var(--text-dim)" stroke-width="1.3"/>
+        <line x1="86" y1="44" x2="104" y2="44" stroke="var(--text-dim)" stroke-width="1.3"/>
+        <line x1="99" y1="68" x2="40" y2="112" stroke="var(--border-strong)" stroke-width="1.3"/>
+        <line x1="99" y1="68" x2="99" y2="118" stroke="var(--border-strong)" stroke-width="1.3"/>
+        <line x1="99" y1="68" x2="150" y2="108" stroke="var(--accent)" stroke-width="1.5"/>
+        <line x1="150" y1="108" x2="150" y2="150" stroke="var(--accent)" stroke-width="1.5"/>
+        <circle cx="40" cy="118" r="6" fill="none" stroke="var(--border-strong)" stroke-width="1.4"/>
+        <circle cx="99" cy="124" r="6" fill="none" stroke="var(--border-strong)" stroke-width="1.4"/>
+        <circle cx="150" cy="108" r="6" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <circle cx="150" cy="157" r="9" fill="none" stroke="var(--dangerous)" stroke-width="1.8"/>
+        <circle cx="150" cy="157" r="3" fill="var(--dangerous)"/>
+      </svg>
+    </div>
   </div>
 
   <div class="card">
@@ -424,7 +434,10 @@
     <div class="section-title">Findings</div>
     <div id="findingsList"></div>
 
-    <div class="section-title">Coverage ledger</div>
+    <div class="section-title">Coverage</div>
+    <div class="card">
+      <div class="coverage-stats" id="coverageStats"></div>
+    </div>
     <div class="card">
       <div class="table-scroll">
         <table>

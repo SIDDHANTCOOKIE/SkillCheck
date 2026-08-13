@@ -112,10 +112,36 @@ function severityRank(f) {
   return order[f.tier] ?? 9;
 }
 
+// Static, hardcoded icon markup only — never built from scan output, so
+// building these via a template element (not textContent) carries no
+// injection risk from anything the API returns.
+const ICON_PATHS = {
+  triangle: '<path d="M12 3 22 20H2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17.2" r="0.6" fill="currentColor" stroke="none"/>',
+  alertCircle: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="7.5" x2="12" y2="12.5"/><circle cx="12" cy="16" r="0.6" fill="currentColor" stroke="none"/>',
+  info: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="10.5" x2="12" y2="16.5"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor" stroke="none"/>',
+  check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5 10.8 15.3 16 9.5"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.3 9.3a2.7 2.7 0 1 1 3.9 2.4c-0.9 0.5-1.2 0.9-1.2 1.8"/><circle cx="12" cy="16.3" r="0.6" fill="currentColor" stroke="none"/>',
+};
+
+function iconEl(name, size = 16) {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
+  return tpl.content.firstElementChild;
+}
+
+const VERDICT_ICON = {
+  MALICIOUS: "triangle", DANGEROUS: "triangle", SUSPICIOUS: "alertCircle",
+  UNVERIFIED: "help", NO_FINDINGS: "check",
+};
+const SEVERITY_ICON = { critical: "triangle", high: "triangle", medium: "alertCircle", low: "info" };
+
 function renderVerdict(data) {
   const badge = document.getElementById("verdictBadge");
   badge.className = "verdict-badge v-" + data.label;
-  badge.textContent = data.label.replace("_", " ") + "  ·  " + data.coverage_pct + "% coverage";
+  badge.replaceChildren(
+    iconEl(VERDICT_ICON[data.label] || "info", 18),
+    document.createTextNode(data.label.replace("_", " ") + "  ·  " + data.coverage_pct + "% coverage"),
+  );
   document.getElementById("summaryLine").textContent = data.summary;
   document.getElementById("modeLine").textContent = "Adjudicator: " + (data.adjudicator_mode || "n/a");
   renderPermalink(data);
@@ -203,15 +229,57 @@ function renderFindings(findings) {
       attckLine.appendChild(document.createTextNode(String(f.chain_id)));
     }
 
-    const div = el("div", { className: "finding-card sev-" + safeToken(f.severity) }, [
+    const iconChip = el("div", { className: "finding-icon" }, [
+      iconEl(SEVERITY_ICON[String(f.severity)] || "info", 16),
+    ]);
+    const body = el("div", { className: "finding-body" }, [
       head,
       fileLine,
       el("pre", { text: f.matched_text }),
       el("div", { className: "why", text: f.rationale }),
       attckLine,
     ]);
+    const div = el("div", { className: "finding-card sev-" + safeToken(f.severity) }, [iconChip, body]);
     list.appendChild(div);
   }
+}
+
+function renderCoverageStats(ledger, coveragePct) {
+  const box = document.getElementById("coverageStats");
+  box.replaceChildren();
+  const totalBytes = ledger.reduce((s, e) => s + (e.bytes || 0), 0) || 1;
+  const byStatus = { analysed: 0, partial: 0, unanalysed: 0 };
+  const countByStatus = { analysed: 0, partial: 0, unanalysed: 0 };
+  for (const e of ledger) {
+    if (byStatus[e.status] === undefined) continue;
+    byStatus[e.status] += e.bytes || 0;
+    countByStatus[e.status] += 1;
+  }
+  const pct = (n) => (100 * n / totalBytes).toFixed(1);
+
+  const percentBlock = el("div", { className: "coverage-percent", text: String(coveragePct) + "%" }, [
+    el("span", { text: "of bytes analysed" }),
+  ]);
+
+  const bar = el("div", { className: "coverage-bar" }, [
+    el("div", { className: "seg seg-analysed" }),
+    el("div", { className: "seg seg-partial" }),
+    el("div", { className: "seg seg-unanalysed" }),
+  ]);
+  bar.children[0].style.width = pct(byStatus.analysed) + "%";
+  bar.children[1].style.width = pct(byStatus.partial) + "%";
+  bar.children[2].style.width = pct(byStatus.unanalysed) + "%";
+
+  const legend = el("div", { className: "coverage-legend" }, [
+    el("span", {}, [el("span", { className: "dot safe" }), document.createTextNode(`${countByStatus.analysed} analysed`)]),
+    el("span", {}, [el("span", { className: "dot suspicious" }), document.createTextNode(`${countByStatus.partial} partial`)]),
+    el("span", {}, [el("span", { className: "dot dangerous" }), document.createTextNode(`${countByStatus.unanalysed} unanalysed`)]),
+    el("span", { text: `${ledger.length} files total` }),
+  ]);
+
+  const main = el("div", { className: "coverage-main" }, [bar, legend]);
+  box.appendChild(percentBlock);
+  box.appendChild(main);
 }
 
 function renderLedger(ledger) {
@@ -267,6 +335,7 @@ async function runScan({ force = false } = {}) {
     const data = await resp.json();
     renderVerdict(data);
     renderFindings(data.findings || []);
+    renderCoverageStats(data.ledger || [], data.coverage_pct);
     renderLedger(data.ledger || []);
     results.classList.remove("hidden");
   } catch (e) {
@@ -288,6 +357,7 @@ async function loadPermalinkFromUrl() {
     const data = await resp.json();
     renderVerdict(data);
     renderFindings(data.findings || []);
+    renderCoverageStats(data.ledger || [], data.coverage_pct);
     renderLedger(data.ledger || []);
     results.classList.remove("hidden");
   } catch (e) {
