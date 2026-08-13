@@ -6,17 +6,29 @@ chains (I5). If no API key is configured, falls back to a deterministic
 tiering heuristic so the pipeline still runs end-to-end — the fallback is
 conservative: low-confidence findings escalate to INSUFFICIENT_CONTEXT
 rather than being cleared (I4).
+
+Two providers: ANTHROPIC_API_KEY calls the Anthropic API directly;
+OPENROUTER_API_KEY (used only when the former is unset) routes the same
+prompt/response contract through OpenRouter's OpenAI-compatible endpoint,
+so any model in its catalog can judge instead — see _resolve_provider().
+The report's adjudicator_mode always names which one actually ran
+("llm:anthropic" / "llm:openrouter"), never a bare "llm".
 """
 from __future__ import annotations
 
 import json
 import os
 import secrets
+import urllib.error
+import urllib.request
 
 from .graph import Chain
 from .models import Capability, Finding, Severity, Tier
 
 ADJUDICATOR_MODEL = os.environ.get("SKILLCHECK_ADJUDICATOR_MODEL", "claude-sonnet-5")
+OPENROUTER_MODEL = os.environ.get("SKILLCHECK_OPENROUTER_MODEL", "anthropic/claude-sonnet-4.5")
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_TIMEOUT = 60
 MAX_FINDINGS_IN_PROMPT = 60
 CONTEXT_LINES = 2  # lines of surrounding source shown around each piece of evidence (2.4)
 
@@ -167,10 +179,7 @@ def _deterministic_fallback(findings: list[Finding]) -> None:
         f.rationale += " [tier: deterministic fallback, no LLM adjudication performed]"
 
 
-def _call_model(prompt: str, api_key: str) -> str:
-    """The only line that talks to the network. Extracted as a seam so tests
-    can monkeypatch this one function and drive the parsing/enforcement logic
-    below with a stubbed response — no real API calls, deterministic in CI."""
+def _call_model_anthropic(prompt: str, api_key: str) -> str:
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
@@ -183,13 +192,71 @@ def _call_model(prompt: str, api_key: str) -> str:
     return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
 
 
-def _adjudicate_batch(batch: list[Finding], chains: list[Chain], file_texts: dict[str, str] | None, api_key: str) -> str:
+def _call_model_openrouter(prompt: str, api_key: str) -> str:
+    """OpenRouter exposes an OpenAI-compatible chat-completions endpoint —
+    called directly over HTTP (matching osv_client.py's approach elsewhere
+    in this codebase) rather than adding an SDK dependency for one call."""
+    body = json.dumps({
+        "model": OPENROUTER_MODEL,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        OPENROUTER_URL,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            # Required-in-practice headers OpenRouter uses for its own
+            # analytics/rate-limiting attribution — harmless if ignored.
+            "HTTP-Referer": "https://github.com/anthropics/skills",
+            "X-Title": "SkillCheck",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=OPENROUTER_TIMEOUT) as resp:
+        parsed = json.loads(resp.read().decode("utf-8"))
+    return parsed["choices"][0]["message"]["content"] or ""
+
+
+def _call_model(prompt: str, provider: str, api_key: str) -> str:
+    """The only place that talks to the network. Extracted as a seam so tests
+    can monkeypatch this one function and drive the parsing/enforcement logic
+    below with a stubbed response — no real API calls, deterministic in CI."""
+    if provider == "openrouter":
+        return _call_model_openrouter(prompt, api_key)
+    return _call_model_anthropic(prompt, api_key)
+
+
+def _resolve_provider() -> tuple[str, str] | None:
+    """Which LLM backend to adjudicate with, and its key — or None if neither
+    is configured. ANTHROPIC_API_KEY wins if both are set (pre-existing
+    default behaviour); OPENROUTER_API_KEY is the alternative, routing
+    through OpenRouter's model catalog instead of calling Anthropic directly
+    (useful when only an OpenRouter key is available, or to point the
+    adjudicator at a different model family via SKILLCHECK_OPENROUTER_MODEL)."""
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    if anthropic_key:
+        return "anthropic", anthropic_key
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+    if openrouter_key:
+        return "openrouter", openrouter_key
+    return None
+
+
+def _adjudicate_batch(
+    batch: list[Finding], chains: list[Chain], file_texts: dict[str, str] | None,
+    provider: str, api_key: str,
+) -> str:  # returns "llm:<provider>" on success, so the report is explicit about which model judged it
     """Adjudicates one batch (<= MAX_FINDINGS_IN_PROMPT findings) via the
     model. Returns 'llm' or a 'deterministic-fallback (...)' reason string."""
     prompt, id_map = _build_prompt(batch, chains, file_texts)
 
     try:
-        text = _call_model(prompt, api_key)
+        text = _call_model(prompt, provider, api_key)
     except Exception as e:  # noqa: BLE001 - a network/API failure has no data to salvage
         _deterministic_fallback(batch)
         return f"deterministic-fallback (llm error: {e})"
@@ -242,7 +309,7 @@ def _adjudicate_batch(batch: list[Finding], chains: list[Chain], file_texts: dic
         if fid not in seen_ids:
             f.tier = Tier.INSUFFICIENT_CONTEXT
             f.rationale += " [adjudicator did not return a usable verdict for this finding; escalated]"
-    return "llm"
+    return f"llm:{provider}"
 
 
 def adjudicate(findings: list[Finding], chains: list[Chain], file_texts: dict[str, str] | None = None) -> str:
@@ -256,25 +323,28 @@ def adjudicate(findings: list[Finding], chains: list[Chain], file_texts: dict[st
     if not findings:
         return "n/a"
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
+    resolved = _resolve_provider()
+    if resolved is None:
         _deterministic_fallback(findings)
         return "deterministic-fallback"
+    provider, api_key = resolved
 
-    try:
-        import anthropic  # noqa: F401 - import-checked here so the ImportError branch below is reachable
-    except ImportError:
-        _deterministic_fallback(findings)
-        return "deterministic-fallback (anthropic package not installed)"
+    if provider == "anthropic":
+        try:
+            import anthropic  # noqa: F401 - import-checked here so the ImportError branch below is reachable
+        except ImportError:
+            _deterministic_fallback(findings)
+            return "deterministic-fallback (anthropic package not installed)"
 
     modes: list[str] = []
     for i in range(0, len(findings), MAX_FINDINGS_IN_PROMPT):
         batch = findings[i: i + MAX_FINDINGS_IN_PROMPT]
-        modes.append(_adjudicate_batch(batch, chains, file_texts, api_key))
+        modes.append(_adjudicate_batch(batch, chains, file_texts, provider, api_key))
 
-    if all(m == "llm" for m in modes):
-        return "llm" if len(modes) == 1 else f"llm ({len(modes)} batches)"
-    if any(m == "llm" for m in modes):
-        n_fallback = sum(1 for m in modes if m != "llm")
-        return f"llm+deterministic-fallback ({n_fallback}/{len(modes)} batches fell back)"
+    llm_mode = f"llm:{provider}"
+    if all(m == llm_mode for m in modes):
+        return llm_mode if len(modes) == 1 else f"{llm_mode} ({len(modes)} batches)"
+    if any(m == llm_mode for m in modes):
+        n_fallback = sum(1 for m in modes if m != llm_mode)
+        return f"{llm_mode}+deterministic-fallback ({n_fallback}/{len(modes)} batches fell back)"
     return modes[0]
