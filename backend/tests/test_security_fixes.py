@@ -237,6 +237,36 @@ def test_resolved_reference_to_a_present_sibling_is_not_flagged():
     assert not any(f.rule_id == "SC-REF1" for f in result.verdict.findings)
 
 
+def test_extensionless_invocation_of_a_present_script_resolves():
+    """Real skills routinely invoke a script by its bare name in prose
+    ('Run `python scripts/check_fields <file>`' for scripts/check_fields.py)
+    — found scanning anthropics/skills' real `pdf` skill, which previously
+    false-positived here. The stem match must find the real file so this
+    never reaches SC-REF1 at all."""
+    d = Path(tempfile.mkdtemp())
+    (d / "scripts").mkdir()
+    (d / "SKILL.md").write_text("# S\n\nRun `python scripts/check_fields <file>` to check fields.\n")
+    (d / "scripts" / "check_fields.py").write_text("print('ok')\n")
+
+    result = scan(str(d))
+    assert not any(f.rule_id == "SC-REF1" for f in result.verdict.findings)
+
+
+def test_extensionless_prose_mention_without_code_span_is_not_flagged():
+    """'Better scripts/tools that produced better output' is ordinary prose,
+    not a file reference — found scanning anthropics/skills' real
+    `skill-creator` skill, which previously false-positived here because
+    there is no `scripts/tools` file and no backtick to disambiguate it from
+    prose. Without a file extension or an inline-code span, the match must
+    not become a finding."""
+    text = (
+        "---\nname: helper\ndescription: A helper\n---\n"
+        "# Helper\n\nBetter scripts/tools that produced better output are the goal.\n"
+    )
+    result = scan(text_blob=("SKILL.md", text))
+    assert not any(f.rule_id == "SC-REF1" for f in result.verdict.findings)
+
+
 # --- P2-11: frontmatter is scanned -----------------------------------------
 
 def test_payload_in_frontmatter_description_is_detected():

@@ -60,7 +60,43 @@ def _resolve_target(target: str, all_paths: list[str], from_path: str) -> str | 
     for p in all_paths:
         if p == candidate or p.endswith("/" + target) or p == target:
             return p
+    # Docs commonly invoke a script by its bare name — `scripts/build` for
+    # `scripts/build.sh` — omitting the extension. Only try a stem match when
+    # the target itself has none, so a target that already names a real
+    # extension (and simply doesn't exist) still correctly fails to resolve.
+    if "." not in target.rsplit("/", 1)[-1]:
+        for p in all_paths:
+            stem = p.rsplit(".", 1)[0] if "." in p.rsplit("/", 1)[-1] else p
+            if stem == candidate or stem.endswith("/" + target) or stem == target:
+                return p
     return None
+
+
+def _is_plausible_file_reference(text: str, target: str, start: int, end: int) -> bool:
+    """Gate for treating a `scripts/X` / `references/X` regex match as an
+    actual file reference rather than ordinary prose that happens to contain
+    a slash between two words (e.g. "better scripts/tools that produced").
+
+    A target with a file extension (`scripts/build.sh`, `references/advanced.md`)
+    is accepted on its own — that's the ordinary, unadorned way real skills
+    write an invocation, extension included. An extensionless target
+    (`scripts/check_fillable_fields`) is accepted only when set off as inline
+    code or inside a fenced block, since without an extension the same shape
+    also matches plain prose ("better scripts/tools that produced ..."), and
+    that ambiguity needs the extra signal to resolve (verified against real
+    skills — see the pdf/skill-creator cases in the session that added this)."""
+    if "." in target.rsplit("/", 1)[-1]:
+        return True
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    if line_end == -1:
+        line_end = len(text)
+    line = text[line_start:line_end]
+    rel_start = start - line_start
+    for m in re.finditer(r"`[^`\n]*`", line):
+        if m.start() <= rel_start < m.end():
+            return True
+    return False
 
 
 @dataclass
@@ -96,13 +132,13 @@ def build_component_graph(
                 resolved = _resolve_target(m.group(0), all_paths, path)
                 if resolved:
                     edges.append(resolved)
-                else:
+                elif _is_plausible_file_reference(text, m.group(0), m.start(), m.end()):
                     unresolved.append(UnresolvedReference(path, m.group(0), m.start()))
             for m in re.finditer(r"\bscripts?/[\w./-]+", text):
                 resolved = _resolve_target(m.group(0), all_paths, path)
                 if resolved:
                     edges.append(resolved)
-                else:
+                elif _is_plausible_file_reference(text, m.group(0), m.start(), m.end()):
                     unresolved.append(UnresolvedReference(path, m.group(0), m.start()))
         elif path.endswith(".py"):
             for m in re.finditer(r"^\s*(?:import|from)\s+([\w.]+)", text, re.MULTILINE):

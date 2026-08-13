@@ -30,6 +30,16 @@ def build_ledger(
     total_bytes = 0
 
     for f in files:
+        if f.rel_path not in analysed_paths and _reason_for_unanalysed(f) == "binary":
+            # A font/image/PDF asset that was correctly classified as binary
+            # is not a scan failure — counting its bytes against the ratio
+            # made a legitimate skill that ships design assets (e.g. a
+            # font-heavy canvas/theme skill) read as low-coverage UNVERIFIED
+            # for shipping exactly the kind of file it's supposed to ship.
+            # Still listed in the ledger below so it's visible, just excluded
+            # from the pct this drives.
+            ledger.append(CoverageEntry(f.rel_path, "unanalysed", f.size, "binary"))
+            continue
         total_bytes += f.size
         if f.rel_path in analysed_paths:
             text = file_texts.get(f.rel_path, "")
