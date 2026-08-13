@@ -1,0 +1,39 @@
+name: Keep Render instance warm
+
+# Render's free tier spins a web service down after ~15 minutes of no
+# inbound traffic, and the next real request pays a cold-start (~30-50s).
+# This isn't bypassing anything Render restricts — pinging your own
+# deployed health endpoint on a schedule is ordinary traffic, same as a
+# human visiting the page — it just keeps the instance from ever going
+# idle in the first place, so real users never eat the cold start.
+#
+# Set the SKILLCHECK_URL repo variable (Settings -> Secrets and variables
+# -> Actions -> Variables) to your deployed base URL, e.g.
+# https://skillcheck.onrender.com — the workflow no-ops without it rather
+# than failing noisily on every run.
+#
+# Render's free tier also caps monthly instance hours; keeping one service
+# warm 24/7 uses more of that allowance than letting it idle normally would.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /api/health
+        run: |
+          if [ -z "${{ vars.SKILLCHECK_URL }}" ]; then
+            echo "SKILLCHECK_URL repo variable not set — skipping (see workflow comment for setup)."
+            exit 0
+          fi
+          url="${{ vars.SKILLCHECK_URL }}/api/health"
+          echo "Pinging $url"
+          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "$url")
+          echo "Response: $status"
+          if [ "$status" != "200" ]; then
+            echo "::warning::Health check returned $status (may just be a cold start in progress)"
+          fi
