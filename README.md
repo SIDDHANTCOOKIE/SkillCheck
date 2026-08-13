@@ -5,7 +5,7 @@ only `MALICIOUS`, `DANGEROUS`, `SUSPICIOUS`, `UNVERIFIED`, or `NO_FINDINGS`, eac
 evidence, a capability label, and a coverage ledger of what was and wasn't analysed.
 
 <!-- TODO: add a screenshot of the running app (paste/upload/GitHub-URL tabs + a rendered verdict) -->
-![Project screenshot](docs/images/app-screenshot.png)
+![Project screenshot](assets/app-screenshot.png)
 
 ## What it does
 
@@ -107,14 +107,14 @@ curls that health endpoint every 10 minutes (plus manual dispatch) to stop Rende
 from cold-starting; it is not a test/build/deploy CI pipeline.
 
 <!-- TODO: add a screenshot of the AO kanban board used to run this project -->
-![AO kanban board](docs/images/kanban-board.png)
+![AO kanban board](assets/kanban-board.png)
 
 This project was built with parallel AO (agent-orchestrator) worker sessions — see
 **[How this project was built with AO](docs/ao.md)** for what the git history actually shows, and the
 issues run into along the way.
 
 <!-- TODO: add a screenshot related to the AO issues described in docs/ao.md -->
-![AO issue example](docs/images/ao-issue.png)
+![AO issue example](assets/ao-issue.png)
 
 ## Docs
 
