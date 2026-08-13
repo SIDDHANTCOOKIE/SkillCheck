@@ -100,6 +100,17 @@ def decide_verdict(
     # tolerable, false negatives are not.
     corroborated_medium = _has_corroborated_medium(findings, graph)
 
+    # I4 says INSUFFICIENT_CONTEXT "escalates, never clears" — but no branch
+    # below ever read that tier, so escalating into it was functionally
+    # identical to clearing the finding: it just stopped counting anywhere.
+    # A HIGH+ finding genuinely too ambiguous to tier is exactly the case for
+    # UNVERIFIED — "we could not determine this either way" is not the same
+    # claim as "we looked and found nothing" (P1-8).
+    unresolved_high_risk = any(
+        f.tier == Tier.INSUFFICIENT_CONTEXT and f.severity in (Severity.HIGH, Severity.CRITICAL)
+        for f in findings
+    )
+
     runtime_fetch = _has_runtime_fetch(graph)
 
     if confirmed_chain or confirmed_critical:
@@ -122,9 +133,11 @@ def decide_verdict(
             else "uncorroborated high-severity finding(s) or declared-vs-demanded scope mismatch present"
         )
         summary = f"SUSPICIOUS — {reason}. {coverage_note}"
-    elif coverage_pct < COVERAGE_THRESHOLD or runtime_fetch:
+    elif coverage_pct < COVERAGE_THRESHOLD or runtime_fetch or unresolved_high_risk:
         label = "UNVERIFIED"
         extra = " Runtime-fetched content is in the reachable set and cannot be statically cleared." if runtime_fetch else ""
+        if unresolved_high_risk:
+            extra += " A high-severity finding could not be resolved either way and was escalated rather than cleared."
         summary = f"UNVERIFIED — coverage below threshold or content only resolvable at runtime.{extra} {coverage_note}"
     else:
         label = "NO_FINDINGS"
