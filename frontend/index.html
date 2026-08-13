@@ -131,6 +131,9 @@
   .hero-text { flex: 1; min-width: 0; }
   .hero-art { flex: none; width: 200px; }
   .hero-art svg { display: block; width: 100%; height: auto; }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-art .motion-fx { display: none; }
+  }
   @media (max-width: 760px) {
     .hero { flex-direction: column; align-items: flex-start; gap: 28px; }
     .hero-art { width: 150px; align-self: flex-end; }
@@ -199,7 +202,31 @@
     border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13px; width: 280px; max-width: 100%; font-family: var(--mono);
   }
   input[type=file] { color: var(--text-dim); font-size: 13px; }
+  select {
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13px; font-family: var(--mono);
+    width: 240px; max-width: 100%;
+  }
+  select:focus, input[type=password]:focus { outline: none; border-color: var(--accent); }
+  input[type=password] {
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 9px 12px; font-size: 13px; font-family: var(--mono);
+    width: 240px; max-width: 100%;
+  }
   .row { display: flex; gap: 16px; align-items: end; margin-bottom: 12px; flex-wrap: wrap; }
+
+  .advanced { margin-top: 18px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 16px; background: var(--surface-2); }
+  .advanced[open] { padding-bottom: 16px; }
+  .advanced summary {
+    cursor: pointer; padding: 12px 0; font-size: 12.5px; font-weight: 600; color: var(--text-dim);
+    font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.04em; list-style: none;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .advanced summary::-webkit-details-marker { display: none; }
+  .advanced summary::before { content: "›"; display: inline-block; transition: transform 0.12s ease; font-size: 15px; }
+  .advanced[open] summary::before { transform: rotate(90deg); }
+  .advanced summary:hover { color: var(--text); }
+  .advanced .hint { margin-top: 0; margin-bottom: 14px; }
 
   button.primary {
     background: var(--accent); color: var(--accent-contrast);
@@ -347,9 +374,22 @@
       <!-- What the engine does, drawn: SKILL.md decomposes into a component
            graph; most nodes stay clean, one path (accent) reaches a sink
            that gets flagged (severity red). The dot matrix is the raw byte
-           surface everything else gets extracted from. -->
+           surface everything else gets extracted from — a genuine SVG
+           filter (feTurbulence + feDisplacementMap, its frequency animated)
+           gives it a faint scan-noise jitter instead of sitting static.
+           A pulse travels the accent path on a loop: the one thing this
+           engine actually does is trace a path from source to a flagged
+           sink, so that's the one thing drawn in motion. -->
       <svg viewBox="0 0 200 220" fill="none">
-        <g opacity="0.5">
+        <defs>
+          <filter id="scanNoise" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" seed="4" result="noise">
+              <animate attributeName="baseFrequency" values="0.9;1.35;0.9" dur="7s" repeatCount="indefinite" />
+            </feTurbulence>
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.2" />
+          </filter>
+        </defs>
+        <g opacity="0.5" filter="url(#scanNoise)">
           <circle cx="8" cy="188" r="1.4" fill="var(--text-dim)"/><circle cx="18" cy="188" r="1.4" fill="var(--text-dim)"/><circle cx="28" cy="188" r="1.4" fill="var(--text-dim)"/><circle cx="38" cy="188" r="1.4" fill="var(--text-dim)"/>
           <circle cx="8" cy="198" r="1.4" fill="var(--text-dim)"/><circle cx="18" cy="198" r="1.4" fill="var(--text-dim)"/><circle cx="28" cy="198" r="1.4" fill="var(--text-dim)"/><circle cx="38" cy="198" r="1.4" fill="var(--text-dim)"/>
           <circle cx="8" cy="208" r="1.4" fill="var(--text-dim)"/><circle cx="18" cy="208" r="1.4" fill="var(--text-dim)"/><circle cx="28" cy="208" r="1.4" fill="var(--text-dim)"/><circle cx="38" cy="208" r="1.4" fill="var(--text-dim)"/>
@@ -365,6 +405,16 @@
         <circle cx="40" cy="118" r="6" fill="none" stroke="var(--border-strong)" stroke-width="1.4"/>
         <circle cx="99" cy="124" r="6" fill="none" stroke="var(--border-strong)" stroke-width="1.4"/>
         <circle cx="150" cy="108" r="6" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <g class="motion-fx">
+          <circle r="2.6" fill="var(--accent)">
+            <animateMotion path="M99,68 L150,108 L150,153" dur="2.6s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.2 1" keyTimes="0;1" />
+            <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.06;0.9;1" dur="2.6s" repeatCount="indefinite" />
+          </circle>
+          <circle cx="150" cy="157" r="9" fill="none" stroke="var(--dangerous)" stroke-width="1.6">
+            <animate attributeName="r" values="7;15" dur="2.6s" repeatCount="indefinite" begin="1.9s" />
+            <animate attributeName="opacity" values="0.7;0" dur="2.6s" repeatCount="indefinite" begin="1.9s" />
+          </circle>
+        </g>
         <circle cx="150" cy="157" r="9" fill="none" stroke="var(--dangerous)" stroke-width="1.8"/>
         <circle cx="150" cy="157" r="3" fill="var(--dangerous)"/>
       </svg>
@@ -408,6 +458,30 @@
         this is the only submission mode that can see everything a SKILL.md references
         (bundled scripts, references/ files) rather than just the pasted text.</p>
     </div>
+
+    <details class="advanced">
+      <summary>LLM adjudication (optional)</summary>
+      <p class="hint">Findings are always detected without an LLM. Adjudication — ranking
+        each finding's confidence, escalating ambiguous cases — needs a model. This
+        deployment may or may not have one configured; bring your own key to get it
+        regardless. Sent only for this one scan, never stored, never logged, and a
+        BYOK scan isn't cached or given a permalink.</p>
+      <div class="row">
+        <div>
+          <label>Provider</label>
+          <select id="llmProvider">
+            <option value="">Deployment default</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="gemini">Gemini</option>
+          </select>
+        </div>
+        <div>
+          <label>API key</label>
+          <input type="password" id="llmApiKey" placeholder="sk-..." autocomplete="off" />
+        </div>
+      </div>
+    </details>
 
     <div class="row" style="margin-top:18px;">
       <button class="primary" id="scanBtn">Scan skill</button>

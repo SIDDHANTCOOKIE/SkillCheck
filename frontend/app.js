@@ -302,6 +302,18 @@ async function runScan({ force = false } = {}) {
   results.classList.add("hidden");
   const activeTab = document.querySelector(".tab.active").dataset.tab;
 
+  // Bring-your-own LLM key: held only in memory for the duration of this
+  // call, sent to this one endpoint, never written to localStorage/
+  // sessionStorage or any other place that would outlive the page.
+  const llmProvider = document.getElementById("llmProvider").value;
+  const llmApiKey = document.getElementById("llmApiKey").value.trim();
+  if (llmApiKey && !llmProvider) {
+    errorBox.textContent = "Pick a provider to go with that API key (or clear the key to use this deployment's default).";
+    errorBox.classList.remove("hidden");
+    return;
+  }
+  const llmFields = llmApiKey ? { llm_provider: llmProvider, llm_api_key: llmApiKey } : {};
+
   let resp;
   scanBtn.disabled = true;
   loading.classList.remove("hidden");
@@ -312,20 +324,21 @@ async function runScan({ force = false } = {}) {
       if (!text.trim()) throw new Error("Paste some skill content first.");
       resp = await fetch(API_BASE + "/api/scan/text", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, text, force }),
+        body: JSON.stringify({ name, text, force, ...llmFields }),
       });
     } else if (activeTab === "upload") {
       const fileInput = document.getElementById("uploadFile");
       if (!fileInput.files.length) throw new Error("Choose a file to upload.");
       const fd = new FormData();
       fd.append("file", fileInput.files[0]);
-      resp = await fetch(API_BASE + "/api/scan/upload" + (force ? "?force=true" : ""), { method: "POST", body: fd });
+      const params = new URLSearchParams({ force: String(force), ...llmFields });
+      resp = await fetch(API_BASE + "/api/scan/upload?" + params.toString(), { method: "POST", body: fd });
     } else {
       const url = document.getElementById("repoUrl").value.trim();
       if (!url) throw new Error("Paste a GitHub repo URL first.");
       resp = await fetch(API_BASE + "/api/scan/repo", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, force }),
+        body: JSON.stringify({ url, force, ...llmFields }),
       });
     }
     if (!resp.ok) {
