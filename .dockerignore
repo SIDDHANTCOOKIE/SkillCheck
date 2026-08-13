@@ -1,0 +1,13 @@
+**/__pycache__/
+**/*.pyc
+.venv/
+venv/
+**/*.egg-info/
+backend/server.log
+backend/skillcheck_reports.db
+backend/.pytest_cache/
+backend/tests/
+.git/
+.github/
+node_modules/
+.DS_Store

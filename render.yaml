@@ -1,0 +1,25 @@
+# Render Blueprint for SkillCheck.
+# Deploy: Render Dashboard -> New -> Blueprint -> point at the repo containing this file.
+#
+# SkillCheck is one FastAPI service that also serves the static frontend
+# (see FRONTEND_DIR in backend/api/main.py) - a single web service, not a
+# split frontend/backend deploy. Build context is the repo root so the
+# Dockerfile can copy both backend/ and frontend/ into the image.
+services:
+  - type: web
+    name: skillcheck
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # Optional. Without it, the adjudicator falls back to a deterministic
+      # tiering heuristic (still fully functional, see adjudicator.py) -
+      # SkillCheck runs end-to-end with zero required env vars.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Optional. Overrides the adjudicator model (default: claude-sonnet-5).
+      - key: SKILLCHECK_ADJUDICATOR_MODEL
+        sync: false
