@@ -4,6 +4,8 @@ Evidence-backed static-analysis scanner for AI-agent `SKILL.md` packages. It nev
 only `MALICIOUS`, `DANGEROUS`, `SUSPICIOUS`, `UNVERIFIED`, or `NO_FINDINGS`, each backed by quoted
 evidence, a capability label, and a coverage ledger of what was and wasn't analysed.
 
+**Live**: [skillcheck-1r47.onrender.com](https://skillcheck-1r47.onrender.com/)
+
 ![Project screenshot](assets/app.png)
 
 ## What it does
@@ -103,7 +105,8 @@ variables, falling back to a deterministic heuristic tiering when no LLM key is 
 `backend/Dockerfile` with the repo root as build context (so the image can copy both `backend/` and
 `frontend/`), health-checked at `/api/health`, with `autoDeploy: true`. `.github/workflows/keepalive.yml`
 curls that health endpoint every 10 minutes (plus manual dispatch) to stop Render's free-tier instance
-from cold-starting; it is not a test/build/deploy CI pipeline.
+from cold-starting; it is not a test/build/deploy CI pipeline. Deployed at
+[skillcheck-1r47.onrender.com](https://skillcheck-1r47.onrender.com/).
 
 ![AO kanban board](assets/kanban.png)
 
