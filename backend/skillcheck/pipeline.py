@@ -201,10 +201,31 @@ def _scan_ingested(result: IngestResult) -> ScanResult:
     manifests = _scan_stage("dependency", failed_layers, find_manifests, file_texts, default={})
     all_findings.extend(_scan_stage("osv", failed_layers, query_osv, manifests, default=[]) or [])
 
-    graph = _scan_stage("component-graph", failed_layers, build_component_graph, result.files, file_texts)
-    if graph is None:
+    graph_result = _scan_stage("component-graph", failed_layers, build_component_graph, result.files, file_texts)
+    if graph_result is None:
         from .graph import ComponentGraph
-        graph = ComponentGraph(nodes={}, root=None)
+        graph, unresolved_refs = ComponentGraph(nodes={}, root=None), []
+    else:
+        graph, unresolved_refs = graph_result
+    for ref in unresolved_refs:
+        origin_line = _line_of(file_texts[ref.file], ref.offset)
+        all_findings.append(Finding(
+            rule_id="SC-REF1",
+            capability=Capability.UNSCANNED_REFERENCE,
+            file=ref.file,
+            start_line=origin_line,
+            end_line=origin_line,
+            matched_text=ref.target,
+            severity=Severity.MEDIUM,
+            rationale=(
+                f"This document references '{ref.target}', but no file at that path was "
+                "part of this scan. This scan cannot clear content it never saw — resubmit "
+                "as the full package (zip or repo URL), not just this one file, for a "
+                "verdict that accounts for it."
+            ),
+            confidence=1.0,
+            detector="component-graph",
+        ))
     chains = _scan_stage("capability-graph", failed_layers, build_capability_chains, all_findings, graph, default=[])
 
     _scan_stage("corroborate-provenance", failed_layers, corroboration.corroborate_provenance, all_findings)

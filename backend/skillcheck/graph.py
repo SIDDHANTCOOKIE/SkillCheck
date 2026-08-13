@@ -63,10 +63,26 @@ def _resolve_target(target: str, all_paths: list[str], from_path: str) -> str | 
     return None
 
 
-def build_component_graph(files: list[IngestedFile], file_texts: dict[str, str]) -> ComponentGraph:
+@dataclass
+class UnresolvedReference:
+    """A `scripts/...` or `references/...` mention that names a file not present
+    in this scan (paste-only submission, partial zip, etc.) — content the skill
+    declares it will load that this scan never got to see. Surfaced as a
+    finding rather than silently dropped, so a lone pasted SKILL.md that
+    promises an external payload can't score NO_FINDINGS just because the
+    payload wasn't submitted alongside it."""
+    file: str
+    target: str
+    offset: int  # char offset of the match within `file`'s text, for line lookup
+
+
+def build_component_graph(
+    files: list[IngestedFile], file_texts: dict[str, str]
+) -> tuple[ComponentGraph, list[UnresolvedReference]]:
     all_paths = [f.rel_path for f in files]
     nodes = {p: ComponentNode(path=p) for p in all_paths}
     root = _find_root(files)
+    unresolved: list[UnresolvedReference] = []
 
     for path, text in file_texts.items():
         edges: list[str] = []
@@ -80,10 +96,14 @@ def build_component_graph(files: list[IngestedFile], file_texts: dict[str, str])
                 resolved = _resolve_target(m.group(0), all_paths, path)
                 if resolved:
                     edges.append(resolved)
+                else:
+                    unresolved.append(UnresolvedReference(path, m.group(0), m.start()))
             for m in re.finditer(r"\bscripts?/[\w./-]+", text):
                 resolved = _resolve_target(m.group(0), all_paths, path)
                 if resolved:
                     edges.append(resolved)
+                else:
+                    unresolved.append(UnresolvedReference(path, m.group(0), m.start()))
         elif path.endswith(".py"):
             for m in re.finditer(r"^\s*(?:import|from)\s+([\w.]+)", text, re.MULTILINE):
                 mod = m.group(1).replace(".", "/")
@@ -108,7 +128,7 @@ def build_component_graph(files: list[IngestedFile], file_texts: dict[str, str])
                         nxt.append(e)
             frontier = nxt
 
-    return ComponentGraph(nodes=nodes, root=root)
+    return ComponentGraph(nodes=nodes, root=root), unresolved
 
 
 # --- capability graph --------------------------------------------------------

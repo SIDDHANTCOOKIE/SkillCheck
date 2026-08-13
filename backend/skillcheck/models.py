@@ -30,6 +30,7 @@ class Capability(str, Enum):
     HARMFUL_CONTENT = "harmful_content"
     ANTI_REFUSAL = "anti_refusal"
     AGENT_SNOOPING = "agent_snooping"
+    UNSCANNED_REFERENCE = "unscanned_reference"
     UNKNOWN = "unknown"
 
 

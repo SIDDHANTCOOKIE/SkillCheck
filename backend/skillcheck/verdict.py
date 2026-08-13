@@ -15,6 +15,13 @@ def _has_runtime_fetch(graph: ComponentGraph) -> bool:
     return any(n.load_stage == "runtime" for n in graph.nodes.values())
 
 
+def _has_unscanned_reference(findings: list[Finding]) -> bool:
+    """A `scripts/...`/`references/...` mention this scan couldn't resolve to
+    an actual submitted file — content the skill declares but this scan never
+    saw. Same footing as a runtime fetch: unresolved, not cleared."""
+    return any(f.capability.value == "unscanned_reference" for f in findings)
+
+
 def _direct_locality(graph: ComponentGraph, a: str, b: str) -> bool:
     """Same file, or a direct link/import edge — deliberately NOT the broader
     common-root reachability used for chain formation (graph.py). Two
@@ -112,6 +119,7 @@ def decide_verdict(
     )
 
     runtime_fetch = _has_runtime_fetch(graph)
+    unscanned_reference = _has_unscanned_reference(findings)
 
     if confirmed_chain or confirmed_critical:
         label = "MALICIOUS"
@@ -133,11 +141,13 @@ def decide_verdict(
             else "uncorroborated high-severity finding(s) or declared-vs-demanded scope mismatch present"
         )
         summary = f"SUSPICIOUS — {reason}. {coverage_note}"
-    elif coverage_pct < COVERAGE_THRESHOLD or runtime_fetch or unresolved_high_risk:
+    elif coverage_pct < COVERAGE_THRESHOLD or runtime_fetch or unresolved_high_risk or unscanned_reference:
         label = "UNVERIFIED"
         extra = " Runtime-fetched content is in the reachable set and cannot be statically cleared." if runtime_fetch else ""
         if unresolved_high_risk:
             extra += " A high-severity finding could not be resolved either way and was escalated rather than cleared."
+        if unscanned_reference:
+            extra += " This document references local content (a script or reference file) that was not part of this scan."
         summary = f"UNVERIFIED — coverage below threshold or content only resolvable at runtime.{extra} {coverage_note}"
     else:
         label = "NO_FINDINGS"

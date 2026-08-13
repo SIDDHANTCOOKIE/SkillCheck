@@ -199,6 +199,44 @@ def test_insufficient_context_low_severity_does_not_force_unverified():
     assert v.label == "NO_FINDINGS"
 
 
+# --- unresolved local references: a lone pasted SKILL.md can't clear content
+# it never saw (scripts dir / references dir / split-across-files evasions,
+# each previously NO_FINDINGS when submitted as pasted text rather than a
+# full zip/repo, because the payload lived in a sibling file the paste-only
+# path never receives) --------------------------------------------------------
+
+@pytest.mark.parametrize("fixture_dir", [
+    "evasion_scripts_dir",
+    "evasion_split_across_files",
+    "evasion_progressive_disclosure",
+])
+def test_pasted_skill_md_referencing_unscanned_sibling_is_not_no_findings(fixture_dir):
+    skill_md = RED / fixture_dir / "SKILL.md"
+    text = skill_md.read_text(encoding="utf-8")
+    result = scan(text_blob=("SKILL.md", text))
+    assert result.verdict.label != "NO_FINDINGS"
+    assert any(f.rule_id == "SC-REF1" for f in result.verdict.findings)
+
+
+def test_unscanned_reference_finding_forces_unverified():
+    f = Finding(
+        rule_id="SC-REF1", capability=Capability.UNSCANNED_REFERENCE, file="SKILL.md",
+        start_line=1, end_line=1, matched_text="scripts/setup.sh",
+        severity=Severity.MEDIUM, rationale="r", confidence=1.0,
+    )
+    graph = ComponentGraph(nodes={}, root=None)
+    v = decide_verdict([f], [], [], 100.0, graph, False)
+    assert v.label == "UNVERIFIED"
+
+
+def test_resolved_reference_to_a_present_sibling_is_not_flagged():
+    """The rule must fire only on references the scan actually couldn't
+    resolve — a full-package scan where the referenced file *is* present
+    shouldn't be penalised just for having a references/ mention."""
+    result = scan(str(RED / "evasion_split_across_files"))
+    assert not any(f.rule_id == "SC-REF1" for f in result.verdict.findings)
+
+
 # --- P2-11: frontmatter is scanned -----------------------------------------
 
 def test_payload_in_frontmatter_description_is_detected():
