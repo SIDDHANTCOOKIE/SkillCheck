@@ -15,21 +15,31 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
-      # Optional. Without either key below, the adjudicator falls back to a
-      # deterministic tiering heuristic (still fully functional, see
-      # adjudicator.py) - SkillCheck runs end-to-end with zero required env
-      # vars. If both are set, ANTHROPIC_API_KEY wins.
+      # All three keys below are optional. Without any of them, the
+      # adjudicator falls back to a deterministic tiering heuristic (still
+      # fully functional, see adjudicator.py) - SkillCheck runs end-to-end
+      # with zero required env vars, and a visitor can still get real LLM
+      # adjudication via their own bring-your-own-key request even then
+      # (see api/main.py's _llm_override). Precedence when server-side keys
+      # are set: ANTHROPIC_API_KEY, then OPENROUTER_API_KEY, then
+      # GEMINI_API_KEY.
       - key: ANTHROPIC_API_KEY
         sync: false
       # Optional. Overrides the adjudicator model when using ANTHROPIC_API_KEY
       # (default: claude-sonnet-5).
       - key: SKILLCHECK_ADJUDICATOR_MODEL
         sync: false
-      # Optional alternative to ANTHROPIC_API_KEY - routes the adjudicator
-      # through OpenRouter's model catalog instead of calling Anthropic
-      # directly. Only used when ANTHROPIC_API_KEY is unset.
+      # Routes the adjudicator through OpenRouter's model catalog instead of
+      # calling Anthropic directly. Only used when ANTHROPIC_API_KEY is unset.
       - key: OPENROUTER_API_KEY
         sync: false
       # Optional. Model to use via OpenRouter (default: anthropic/claude-sonnet-4.5).
       - key: SKILLCHECK_OPENROUTER_MODEL
+        sync: false
+      # Calls Google's Gemini API directly. Only used when neither
+      # ANTHROPIC_API_KEY nor OPENROUTER_API_KEY is set.
+      - key: GEMINI_API_KEY
+        sync: false
+      # Optional. Model to use via Gemini (default: gemini-2.5-flash).
+      - key: SKILLCHECK_GEMINI_MODEL
         sync: false

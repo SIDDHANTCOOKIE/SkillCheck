@@ -259,7 +259,7 @@ def test_scan_repo_endpoint_scans_the_normalized_clone_url(monkeypatch, tmp_path
 
     seen = {}
 
-    def fake_scan(source=None, *, text_blob=None):
+    def fake_scan(source=None, *, text_blob=None, llm_override=None):
         seen["source"] = source
         return scan(text_blob=("SKILL.md", "# clean\n\nJust formats text.\n"))
 
@@ -269,6 +269,82 @@ def test_scan_repo_endpoint_scans_the_normalized_clone_url(monkeypatch, tmp_path
     assert resp.status_code == 200
     assert seen["source"] == "https://github.com/anthropics/skills.git"
     assert resp.json()["label"] == "NO_FINDINGS"
+
+
+# --- bring-your-own-key: a public deployment needs no operator LLM key ------
+
+def test_scan_text_rejects_unknown_llm_provider():
+    from fastapi.testclient import TestClient
+    from api.main import app
+
+    client = TestClient(app)
+    resp = client.post("/api/scan/text", json={
+        "text": "# hi\n", "llm_provider": "not-a-real-provider", "llm_api_key": "x",
+    })
+    assert resp.status_code == 400
+
+
+def test_scan_text_with_byok_passes_override_and_skips_the_shared_cache(monkeypatch, tmp_path):
+    """A BYOK request must (a) reach adjudicate() with the caller's own
+    (provider, key), overriding whatever the server has configured, and
+    (b) never touch the shared content-addressed cache — neither reading a
+    stale non-adjudicated result nor writing this one for a stranger's
+    identical-text scan to piggyback on for free."""
+    from fastapi.testclient import TestClient
+    import api.main as main_module
+    from skillcheck import store as store_module
+
+    monkeypatch.setattr(store_module, "DB_PATH", tmp_path / "test_reports.db")
+
+    seen = {}
+
+    def fake_scan(source=None, *, text_blob=None, llm_override=None):
+        seen["llm_override"] = llm_override
+        return scan(text_blob=text_blob)
+
+    monkeypatch.setattr(main_module, "scan", fake_scan)
+    client = TestClient(app=main_module.app)
+
+    text = "# a unique byok test skill\n\nformats text.\n"
+    resp = client.post("/api/scan/text", json={
+        "text": text, "llm_provider": "gemini", "llm_api_key": "user-supplied-key",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert seen["llm_override"] == ("gemini", "user-supplied-key")
+    assert body["report_id"] is None  # never persisted, so nothing to permalink to
+    assert body["cached"] is False
+
+    # A second, identical scan WITHOUT a key must not be silently served the
+    # first (BYOK-adjudicated) response from a cache it was never written to.
+    seen.clear()
+    resp2 = client.post("/api/scan/text", json={"text": text})
+    assert resp2.status_code == 200
+    assert seen["llm_override"] is None
+
+
+def test_scan_repo_with_byok_skips_cache_too(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import api.main as main_module
+    from skillcheck import store as store_module
+
+    monkeypatch.setattr(store_module, "DB_PATH", tmp_path / "test_reports.db")
+
+    seen = {}
+
+    def fake_scan(source=None, *, text_blob=None, llm_override=None):
+        seen["llm_override"] = llm_override
+        return scan(text_blob=("SKILL.md", "# clean\n\nJust formats text.\n"))
+
+    monkeypatch.setattr(main_module, "scan", fake_scan)
+    client = TestClient(app=main_module.app)
+    resp = client.post("/api/scan/repo", json={
+        "url": "https://github.com/anthropics/skills",
+        "llm_provider": "openrouter", "llm_api_key": "or-user-key",
+    })
+    assert resp.status_code == 200
+    assert seen["llm_override"] == ("openrouter", "or-user-key")
+    assert resp.json()["report_id"] is None
 
 
 # --- unresolved local references: a lone pasted SKILL.md can't clear content

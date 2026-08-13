@@ -101,8 +101,14 @@ def _run_detectors(
     return findings
 
 
-def scan(source: str | None = None, *, text_blob: tuple[str, str] | None = None) -> ScanResult:
-    """Scan a filesystem path / zip / tar / git URL, or a pasted (name, text) blob."""
+def scan(
+    source: str | None = None, *, text_blob: tuple[str, str] | None = None,
+    llm_override: tuple[str, str] | None = None,
+) -> ScanResult:
+    """Scan a filesystem path / zip / tar / git URL, or a pasted (name, text) blob.
+
+    `llm_override` is an optional caller-supplied (provider, api_key) — see
+    adjudicator._resolve_provider() — for a bring-your-own-key request."""
     result: IngestResult
     if text_blob is not None:
         result = ingest_text_blob(*text_blob)
@@ -111,7 +117,7 @@ def scan(source: str | None = None, *, text_blob: tuple[str, str] | None = None)
         result = ingest_path(source)
 
     try:
-        return _scan_ingested(result)
+        return _scan_ingested(result, llm_override=llm_override)
     finally:
         cleanup(result)
 
@@ -126,7 +132,7 @@ def _scan_stage(name: str, failed_layers: list[str], fn, *args, default=None):
         return default
 
 
-def _scan_ingested(result: IngestResult) -> ScanResult:
+def _scan_ingested(result: IngestResult, *, llm_override: tuple[str, str] | None = None) -> ScanResult:
     file_texts: dict[str, str] = {}
     frontmatter_by_file: dict[str, dict] = {}
     analysed_paths: set[str] = set()
@@ -237,7 +243,9 @@ def _scan_ingested(result: IngestResult) -> ScanResult:
         all_findings, frontmatter_by_file, default=False,
     )
 
-    adjudicator_mode = _scan_stage("adjudicator", failed_layers, adjudicate, all_findings, chains, file_texts, default="failed")
+    adjudicator_mode = _scan_stage(
+        "adjudicator", failed_layers, adjudicate, all_findings, chains, file_texts, llm_override, default="failed",
+    )
 
     ledger, coverage_pct = _scan_stage(
         "coverage", failed_layers, build_ledger, result.files, analysed_paths, graph, file_texts,

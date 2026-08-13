@@ -84,15 +84,40 @@ def _enforce_rate_limit(request: Request) -> None:
     bucket.append(now)
 
 
+_LLM_PROVIDERS = ("anthropic", "openrouter", "gemini")
+
+
 class TextScanRequest(BaseModel):
     name: str = "SKILL.md"
     text: str
     force: bool = False
+    llm_provider: str | None = None
+    llm_api_key: str | None = None
 
 
 class RepoScanRequest(BaseModel):
     url: str
     force: bool = False
+    llm_provider: str | None = None
+    llm_api_key: str | None = None
+
+
+def _llm_override(provider: str | None, api_key: str | None) -> tuple[str, str] | None:
+    """A caller-supplied (provider, key) for a bring-your-own-key scan — lets
+    a public deployment run with no operator-funded LLM key at all while
+    still letting a visitor who brings their own trigger real adjudication.
+    The key is used for exactly this one adjudicate() call and nowhere else:
+    never logged, never included in the stored/cached report (verdict.to_dict()
+    has no such field), and the caller below skips both cache read and write
+    for a BYOK request so it can never (a) get served someone else's cached
+    non-adjudicated result when it explicitly asked for a fresh judge, or
+    (b) let a stranger's scan piggyback for free on this visitor's paid key
+    via the shared content-addressed cache."""
+    if not api_key:
+        return None
+    if provider not in _LLM_PROVIDERS:
+        raise HTTPException(400, f"llm_provider must be one of {_LLM_PROVIDERS}")
+    return provider, api_key
 
 
 # Owner/repo path segments, GitHub's own allowed charset (alnum, `.`, `-`,
@@ -134,9 +159,9 @@ def _normalize_github_url(raw: str) -> str:
     return f"https://github.com/{owner}/{repo}.git"
 
 
-def _respond(content_bytes: bytes, force: bool, run_scan) -> JSONResponse:
+def _respond(content_bytes: bytes, force: bool, run_scan, *, skip_cache: bool = False) -> JSONResponse:
     rid = store.report_id(content_bytes, RULESET_VERSION)
-    if not force:
+    if not force and not skip_cache:
         cached = store.get(rid)
         if cached is not None:
             return JSONResponse(content=cached, headers={"Cache-Control": "no-store"})
@@ -149,10 +174,18 @@ def _respond(content_bytes: bytes, force: bool, run_scan) -> JSONResponse:
         raise HTTPException(400, str(e)) from e
 
     payload = result.verdict.to_dict()
-    scanned_at = store.put(rid, RULESET_VERSION, payload, result.adjudicator_mode)
+    if skip_cache:
+        # A bring-your-own-key scan is never persisted to the shared,
+        # unauthenticated report store — see _llm_override()'s docstring for
+        # why (no permalink either, for the same reason: nothing to point at).
+        scanned_at = time.time()
+        report_id = None
+    else:
+        report_id = rid
+        scanned_at = store.put(rid, RULESET_VERSION, payload, result.adjudicator_mode)
     payload = payload | {
         "adjudicator_mode": result.adjudicator_mode,
-        "report_id": rid,
+        "report_id": report_id,
         "scanned_at": scanned_at,
         "cached": False,
     }
@@ -172,12 +205,21 @@ def scan_text(req: TextScanRequest, request: Request):
     if not req.text.strip():
         raise HTTPException(400, "text is empty")
     name = req.name.strip() or "SKILL.md"
-    return _respond(req.text.encode("utf-8"), req.force, lambda: scan(text_blob=(name, req.text)))
+    override = _llm_override(req.llm_provider, req.llm_api_key)
+    return _respond(
+        req.text.encode("utf-8"), req.force,
+        lambda: scan(text_blob=(name, req.text), llm_override=override),
+        skip_cache=override is not None,
+    )
 
 
 @app.post("/api/scan/upload")
-def scan_upload(request: Request, file: UploadFile = File(...), force: bool = False):
+def scan_upload(
+    request: Request, file: UploadFile = File(...), force: bool = False,
+    llm_provider: str | None = None, llm_api_key: str | None = None,
+):
     _enforce_rate_limit(request)
+    override = _llm_override(llm_provider, llm_api_key)
 
     # Stream the upload and enforce the size cap as we go, rather than
     # buffering the whole body first and checking afterward — the latter
@@ -203,23 +245,27 @@ def scan_upload(request: Request, file: UploadFile = File(...), force: bool = Fa
             tmp.write(contents)
             tmp_path = tmp.name
         try:
-            return scan(tmp_path)
+            return scan(tmp_path, llm_override=override)
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    return _respond(contents, force, run)
+    return _respond(contents, force, run, skip_cache=override is not None)
 
 
 @app.post("/api/scan/repo")
 def scan_repo(req: RepoScanRequest, request: Request):
     _enforce_rate_limit(request)
     clone_url = _normalize_github_url(req.url)
+    override = _llm_override(req.llm_provider, req.llm_api_key)
     # Cache key is the normalized clone URL, not a commit SHA — ingest.py's
     # `git clone --depth 1` doesn't resolve one back to the caller. Same
     # caveat as OSV data in a cached report (see module docstring): a repeat
     # scan of the same URL serves the first scan's result until `force=true`
     # bypasses it, even if the repo has since changed.
-    return _respond(clone_url.encode("utf-8"), req.force, lambda: scan(clone_url))
+    return _respond(
+        clone_url.encode("utf-8"), req.force, lambda: scan(clone_url, llm_override=override),
+        skip_cache=override is not None,
+    )
 
 
 @app.get("/api/report/{report_id}")

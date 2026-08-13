@@ -296,6 +296,106 @@ def test_call_model_openrouter_posts_expected_request_and_parses_response(monkey
     assert captured["body"]["messages"][1] == {"role": "user", "content": "FINDINGS:\n- id=x"}
 
 
+def test_call_model_gemini_posts_expected_request_and_parses_response(monkeypatch):
+    captured = {}
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "candidates": [{"content": {"parts": [{"text": '{"verdicts": []}'}]}}]
+            }).encode("utf-8")
+
+    def fake_urlopen(req, timeout=None):
+        captured["url"] = req.full_url
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        captured["timeout"] = timeout
+        return _FakeResponse()
+
+    monkeypatch.setattr(adjudicator.urllib.request, "urlopen", fake_urlopen)
+    result = adjudicator._call_model_gemini("FINDINGS:\n- id=x", "gm-key-456")
+
+    assert result == '{"verdicts": []}'
+    assert captured["url"] == adjudicator.GEMINI_URL_TMPL.format(model=adjudicator.GEMINI_MODEL) + "?key=gm-key-456"
+    assert captured["body"]["system_instruction"] == {"parts": [{"text": adjudicator.SYSTEM_PROMPT}]}
+    assert captured["body"]["contents"] == [{"role": "user", "parts": [{"text": "FINDINGS:\n- id=x"}]}]
+
+
+def test_gemini_used_when_only_its_key_is_set(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "gm-test-key-not-real")
+    f = _finding("SC-P1", Capability.AGENT_MANIPULATION, "ignore all previous instructions")
+
+    seen = {}
+
+    def fake_call(prompt, provider, key):
+        seen["provider"] = provider
+        seen["key"] = key
+        return json.dumps({"verdicts": [{"id": adjudicator._finding_id(f, 0), "verdict": "malicious", "rationale": "x"}]})
+
+    monkeypatch.setattr(adjudicator, "_call_model", fake_call)
+    mode = adjudicator.adjudicate([f], chains=[])
+    assert seen["provider"] == "gemini"
+    assert mode == "llm:gemini"
+    assert f.tier == Tier.CONFIRMED
+
+
+def test_provider_precedence_is_anthropic_then_openrouter_then_gemini(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "a-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "o-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "g-key")
+    assert adjudicator._resolve_provider() == ("anthropic", "a-key")
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert adjudicator._resolve_provider() == ("openrouter", "o-key")
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    assert adjudicator._resolve_provider() == ("gemini", "g-key")
+
+
+# --- bring-your-own-key override --------------------------------------------
+
+def test_llm_override_wins_over_server_env_keys(monkeypatch):
+    """A caller-supplied (provider, key) — a public-facing scan request that
+    brought its own credential — must be used instead of whatever the server
+    has configured, not merely in addition to it."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "server-key")
+    assert adjudicator._resolve_provider(("openrouter", "user-key")) == ("openrouter", "user-key")
+
+
+def test_llm_override_with_unknown_provider_is_rejected():
+    assert adjudicator._resolve_provider(("made-up-provider", "some-key")) is None
+
+
+def test_llm_override_with_empty_key_is_rejected():
+    assert adjudicator._resolve_provider(("anthropic", "")) is None
+
+
+def test_adjudicate_uses_llm_override_end_to_end(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    f = _finding("SC-SH8", Capability.CREDENTIAL_ACCESS, "~/.aws/credentials")
+
+    seen = {}
+
+    def fake_call(prompt, provider, key):
+        seen["provider"] = provider
+        seen["key"] = key
+        return json.dumps({"verdicts": [{"id": adjudicator._finding_id(f, 0), "verdict": "malicious", "rationale": "x"}]})
+
+    monkeypatch.setattr(adjudicator, "_call_model", fake_call)
+    mode = adjudicator.adjudicate([f], chains=[], llm_override=("gemini", "byok-key"))
+    assert seen == {"provider": "gemini", "key": "byok-key"}
+    assert mode == "llm:gemini"
+
+
 def test_findings_beyond_prompt_batch_are_escalated_not_silently_dropped(monkeypatch):
     many = [_finding(f"SC-X{i}", Capability.EXFILTRATION, f"payload {i}") for i in range(adjudicator.MAX_FINDINGS_IN_PROMPT + 5)]
     addressed = many[: adjudicator.MAX_FINDINGS_IN_PROMPT]

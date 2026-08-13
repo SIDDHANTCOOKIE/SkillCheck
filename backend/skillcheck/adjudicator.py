@@ -7,12 +7,17 @@ tiering heuristic so the pipeline still runs end-to-end — the fallback is
 conservative: low-confidence findings escalate to INSUFFICIENT_CONTEXT
 rather than being cleared (I4).
 
-Two providers: ANTHROPIC_API_KEY calls the Anthropic API directly;
-OPENROUTER_API_KEY (used only when the former is unset) routes the same
-prompt/response contract through OpenRouter's OpenAI-compatible endpoint,
-so any model in its catalog can judge instead — see _resolve_provider().
-The report's adjudicator_mode always names which one actually ran
-("llm:anthropic" / "llm:openrouter"), never a bare "llm".
+Three providers, same prompt/response contract for all of them — see
+_resolve_provider(): ANTHROPIC_API_KEY calls the Anthropic API directly;
+OPENROUTER_API_KEY (checked next) routes through OpenRouter's
+OpenAI-compatible endpoint, so any model in its catalog can judge instead;
+GEMINI_API_KEY (checked last) calls Google's Generative Language API
+directly. A caller can also override the server's env-configured provider
+entirely with its own (provider, api_key) — the bring-your-own-key path
+api/main.py exposes so a public deployment needs no operator-funded LLM
+key for adjudication to run at all. The report's adjudicator_mode always
+names which one actually ran ("llm:anthropic" / "llm:openrouter" /
+"llm:gemini"), never a bare "llm".
 """
 from __future__ import annotations
 
@@ -29,6 +34,10 @@ ADJUDICATOR_MODEL = os.environ.get("SKILLCHECK_ADJUDICATOR_MODEL", "claude-sonne
 OPENROUTER_MODEL = os.environ.get("SKILLCHECK_OPENROUTER_MODEL", "anthropic/claude-sonnet-4.5")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_TIMEOUT = 60
+GEMINI_MODEL = os.environ.get("SKILLCHECK_GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_URL_TMPL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+GEMINI_TIMEOUT = 60
+PROVIDERS = ("anthropic", "openrouter", "gemini")
 MAX_FINDINGS_IN_PROMPT = 60
 CONTEXT_LINES = 2  # lines of surrounding source shown around each piece of evidence (2.4)
 
@@ -222,28 +231,63 @@ def _call_model_openrouter(prompt: str, api_key: str) -> str:
     return parsed["choices"][0]["message"]["content"] or ""
 
 
+def _call_model_gemini(prompt: str, api_key: str) -> str:
+    """Google's Generative Language API — same direct-HTTP approach as the
+    OpenRouter path, no SDK dependency. The key travels as a query param
+    per Google's own API shape, not a header; this is their documented
+    auth mechanism for this endpoint, not a workaround."""
+    url = GEMINI_URL_TMPL.format(model=GEMINI_MODEL) + f"?key={api_key}"
+    body = json.dumps({
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0},
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=body, headers={"Content-Type": "application/json"}, method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=GEMINI_TIMEOUT) as resp:
+        parsed = json.loads(resp.read().decode("utf-8"))
+    parts = parsed["candidates"][0]["content"]["parts"]
+    return "".join(p.get("text", "") for p in parts)
+
+
 def _call_model(prompt: str, provider: str, api_key: str) -> str:
     """The only place that talks to the network. Extracted as a seam so tests
     can monkeypatch this one function and drive the parsing/enforcement logic
     below with a stubbed response — no real API calls, deterministic in CI."""
     if provider == "openrouter":
         return _call_model_openrouter(prompt, api_key)
+    if provider == "gemini":
+        return _call_model_gemini(prompt, api_key)
     return _call_model_anthropic(prompt, api_key)
 
 
-def _resolve_provider() -> tuple[str, str] | None:
-    """Which LLM backend to adjudicate with, and its key — or None if neither
-    is configured. ANTHROPIC_API_KEY wins if both are set (pre-existing
-    default behaviour); OPENROUTER_API_KEY is the alternative, routing
-    through OpenRouter's model catalog instead of calling Anthropic directly
-    (useful when only an OpenRouter key is available, or to point the
-    adjudicator at a different model family via SKILLCHECK_OPENROUTER_MODEL)."""
+def _resolve_provider(override: tuple[str, str] | None = None) -> tuple[str, str] | None:
+    """Which LLM backend to adjudicate with, and its key — or None if nothing
+    is configured or supplied.
+
+    `override` is a caller-supplied (provider, api_key) pair — a scan
+    submitted with a bring-your-own key (see api/main.py) — and always wins
+    over server-side env vars when present, letting a public deployment run
+    with no operator-funded LLM key at all while still letting a caller who
+    brings their own trigger real adjudication. Otherwise: ANTHROPIC_API_KEY
+    wins if set (pre-existing default), then OPENROUTER_API_KEY, then
+    GEMINI_API_KEY.
+    """
+    if override is not None:
+        provider, api_key = override
+        if provider not in PROVIDERS or not api_key:
+            return None
+        return override
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     if anthropic_key:
         return "anthropic", anthropic_key
     openrouter_key = os.environ.get("OPENROUTER_API_KEY")
     if openrouter_key:
         return "openrouter", openrouter_key
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_key:
+        return "gemini", gemini_key
     return None
 
 
@@ -312,18 +356,24 @@ def _adjudicate_batch(
     return f"llm:{provider}"
 
 
-def adjudicate(findings: list[Finding], chains: list[Chain], file_texts: dict[str, str] | None = None) -> str:
+def adjudicate(
+    findings: list[Finding], chains: list[Chain], file_texts: dict[str, str] | None = None,
+    llm_override: tuple[str, str] | None = None,
+) -> str:
     """Mutates findings in place (tier, rationale). Returns a mode string for
     the report.
 
     Findings are chunked into batches of MAX_FINDINGS_IN_PROMPT and each
     batch gets its own model call rather than truncating everything past the
     first batch into blanket escalation (2.4) — a skill with 200 findings
-    gets judged, not mass-escalated into noise."""
+    gets judged, not mass-escalated into noise.
+
+    `llm_override` is a caller-supplied (provider, api_key) — see
+    _resolve_provider() — for a bring-your-own-key scan request."""
     if not findings:
         return "n/a"
 
-    resolved = _resolve_provider()
+    resolved = _resolve_provider(llm_override)
     if resolved is None:
         _deterministic_fallback(findings)
         return "deterministic-fallback"
