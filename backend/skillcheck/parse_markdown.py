@@ -55,6 +55,14 @@ class ParsedDocument:
     html_comments: list[HtmlComment]
     links: list[LinkTarget]
     raw: str
+    # Raw YAML frontmatter text ("" if none), and the offset to add to a line
+    # number computed within it to land on the right line of `raw`. This used
+    # to be parsed *only* into `frontmatter` (a dict, for the scope-mismatch
+    # check) and never handed to any detector — `description:` is the field
+    # an agent runtime always loads, so it was the single highest-value blind
+    # spot in the whole scanner (P2-11).
+    frontmatter_raw: str = ""
+    frontmatter_line_offset: int = 0
 
 
 def _line_of(text: str, offset: int) -> int:
@@ -62,11 +70,27 @@ def _line_of(text: str, offset: int) -> int:
 
 
 def parse_document(raw: str) -> ParsedDocument:
+    # A UTF-8 BOM at byte 0 made the anchored frontmatter regex fail outright
+    # (it requires a literal "---" at position 0) — silently disabling
+    # frontmatter parsing, and with it the scope-mismatch check, by prepending
+    # one invisible byte. BOM removal doesn't change line numbers (it isn't a
+    # newline), so every offset computed below still lands correctly.
+    if raw.startswith("﻿"):
+        raw = raw[1:]
+
     frontmatter: dict = {}
+    frontmatter_raw = ""
+    frontmatter_line_offset = 0
     body = raw
     fm_match = _FRONTMATTER_RE.match(raw)
     if fm_match:
         fm_text = fm_match.group(1)
+        frontmatter_raw = fm_text
+        # The opening "---" is always on line 1 (the regex only matches at
+        # the very start of the document), so the YAML content's own line 1
+        # is always raw's line 2 — computed rather than hardcoded in case a
+        # future change to the regex allows leading blank lines.
+        frontmatter_line_offset = _line_of(raw, fm_match.start(1)) - 1
         if yaml is not None:
             try:
                 loaded = yaml.safe_load(fm_text)
@@ -121,4 +145,6 @@ def parse_document(raw: str) -> ParsedDocument:
         html_comments=html_comments,
         links=links,
         raw=raw,
+        frontmatter_raw=frontmatter_raw,
+        frontmatter_line_offset=frontmatter_line_offset,
     )

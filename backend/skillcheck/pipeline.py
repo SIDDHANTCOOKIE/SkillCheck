@@ -149,6 +149,15 @@ def _scan_ingested(result: IngestResult) -> ScanResult:
         if f.rel_path.lower().endswith((".md", ".markdown")):
             doc = parse_document(text)
             frontmatter_by_file[f.rel_path] = doc.frontmatter
+            if doc.frontmatter_raw:
+                # `description:` is the field an agent runtime always loads —
+                # previously this text was parsed only into a dict for the
+                # scope-mismatch check and handed to no detector at all, so a
+                # payload here scored NO_FINDINGS regardless of content.
+                all_findings.extend(_run_detectors(
+                    f.rel_path, doc.frontmatter_raw, ["frontmatter"], failed_layers,
+                    line_offset=doc.frontmatter_line_offset,
+                ))
             # prose is blanked-but-newline-preserving (see parse_markdown.py), so
             # its own line numbers already match the raw file — no offset needed.
             all_findings.extend(_run_detectors(f.rel_path, doc.prose, ["prose"], failed_layers))

@@ -78,9 +78,15 @@ def decide_verdict(
         and f.capability.value in ("anti_forensics", "persistence", "agent_manipulation")
     ]
 
+    # CONFIRMED belongs here too: a HIGH-severity finding the adjudicator
+    # called "clear evidence of intent to harm" must be at least as
+    # suspicious as an uncorroborated POSSIBLE/LIKELY one of the same
+    # severity. Omitting it meant a *more* confident verdict from the judge
+    # could land on a *lower* label than a less confident one — being more
+    # confident made the label better (P1-7).
     high_possible = [
         f for f in findings
-        if f.tier in (Tier.POSSIBLE, Tier.LIKELY)
+        if f.tier in (Tier.POSSIBLE, Tier.LIKELY, Tier.CONFIRMED)
         and f.severity in (Severity.HIGH, Severity.CRITICAL)
     ]
 

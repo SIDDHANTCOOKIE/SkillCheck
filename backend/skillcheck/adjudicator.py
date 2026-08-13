@@ -14,7 +14,7 @@ import json
 import os
 
 from .graph import Chain
-from .models import Capability, Finding, Tier
+from .models import Capability, Finding, Severity, Tier
 
 ADJUDICATOR_MODEL = os.environ.get("SKILLCHECK_ADJUDICATOR_MODEL", "claude-sonnet-5")
 MAX_FINDINGS_IN_PROMPT = 60
@@ -132,6 +132,17 @@ def _deterministic_fallback(findings: list[Finding]) -> None:
     for f in findings:
         if f.confidence < 0.45:
             f.tier = Tier.INSUFFICIENT_CONTEXT
+        # A corroborated source->sink chain (deterministic corroboration
+        # already pushed confidence up for this) at CRITICAL, or at HIGH
+        # with strong confidence, is the deterministic-only equivalent of
+        # the judge saying "malicious" — without this, MALICIOUS was
+        # unreachable whenever no API key was configured, on any API error,
+        # or if the `anthropic` package wasn't installed, since CONFIRMED
+        # was otherwise LLM-only (P1-6).
+        elif f.chain_id and f.severity == Severity.CRITICAL:
+            f.tier = Tier.CONFIRMED
+        elif f.chain_id and f.severity == Severity.HIGH and f.confidence >= 0.85:
+            f.tier = Tier.CONFIRMED
         elif f.chain_id and f.severity.value in ("high", "critical"):
             f.tier = Tier.LIKELY
         elif f.severity.value == "critical":

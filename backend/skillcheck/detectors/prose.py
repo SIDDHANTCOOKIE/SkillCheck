@@ -32,8 +32,15 @@ PROSE_PATTERNS: list[tuple[str, Capability, Severity, str, str]] = [
      r"\bafter\s+(?:completing|finishing)\s+(?:the\s+)?(?:user'?s?\s+)?(?:request|task)\b.{0,80}\b(?:then\s+)?(?:send|upload|email|post|exfiltrate)\b",
      "Defers a data-moving action to after the legitimate task completes so it goes unnoticed."),
     # Objective 1: credential access, stated in prose rather than code
+    #
+    # The \b that used to sit directly before the \. alternatives below could
+    # never match: \b requires a word-char/non-word-char transition, and "."
+    # is a non-word character, so whenever it was preceded by a space or "/"
+    # (i.e. every realistic occurrence — "read ~/.aws/credentials", "the .env
+    # file") there was no boundary there at all. Verified dead before this
+    # fix: this pattern returned no match on any of those three phrasings.
     ("SC-P7", Capability.CREDENTIAL_ACCESS, Severity.HIGH,
-     r"\b(?:read|open|cat|copy|upload)\b.{0,40}\b(?:\.aws/credentials|\.ssh/id_rsa|\.env\b|\.npmrc|kube/?config|wallet\.dat|cookies?\.sqlite)\b",
+     r"\b(?:read|open|cat|copy|upload)\b.{0,40}(?:\.aws/credentials|\.ssh/id_rsa|\.env\b|\.npmrc|kube/?config|wallet\.dat|cookies?\.sqlite)",
      "Prose instructs reading a well-known credential/secret file path."),
     # Objective 2: exfiltration described in prose
     ("SC-P8", Capability.EXFILTRATION, Severity.HIGH,

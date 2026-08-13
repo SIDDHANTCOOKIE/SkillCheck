@@ -48,8 +48,14 @@ PATTERNS: list[tuple[str, Capability, Severity, str, str]] = [
      "Instructs the agent to drop its safety behavior."),
 
     # Agent / skill snooping
+    #
+    # Same dead-\b bug as SC-P7 in prose.py: the boundary directly before
+    # "\.claude/" can't match after a space or "/" — i.e. it was dead for the
+    # headline case ("cat ~/.claude/settings.json"), only the non-dot
+    # alternatives (CLAUDE.md, claude_desktop_config.json, "system prompt")
+    # ever actually fired.
     ("SC-E9", Capability.AGENT_SNOOPING, Severity.MEDIUM,
-     r"\b(?:read|cat|list|enumerate)\b[^\n]{0,40}\b(?:\.claude/|CLAUDE\.md|claude_desktop_config\.json|system\s+prompt)\b",
+     r"\b(?:read|cat|list|enumerate)\b[^\n]{0,40}(?:\.claude/|CLAUDE\.md|claude_desktop_config\.json|system\s+prompt)\b",
      "Reads the host agent's own configuration/system-prompt files rather than user data."),
     ("SC-E10", Capability.AGENT_SNOOPING, Severity.MEDIUM,
      r"\b(?:read|cat|list)\b[^\n]{0,40}\bother\s+(?:installed\s+)?skills\b|\.claude/skills/(?!\S*\bthis\b)",
