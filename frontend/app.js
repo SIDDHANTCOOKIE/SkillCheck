@@ -32,6 +32,7 @@ document.querySelectorAll(".tab").forEach(t => {
     t.classList.add("active");
     document.getElementById("tab-paste").classList.toggle("hidden", t.dataset.tab !== "paste");
     document.getElementById("tab-upload").classList.toggle("hidden", t.dataset.tab !== "upload");
+    document.getElementById("tab-repo").classList.toggle("hidden", t.dataset.tab !== "repo");
   });
 });
 
@@ -245,12 +246,19 @@ async function runScan({ force = false } = {}) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, text, force }),
       });
-    } else {
+    } else if (activeTab === "upload") {
       const fileInput = document.getElementById("uploadFile");
       if (!fileInput.files.length) throw new Error("Choose a file to upload.");
       const fd = new FormData();
       fd.append("file", fileInput.files[0]);
       resp = await fetch(API_BASE + "/api/scan/upload" + (force ? "?force=true" : ""), { method: "POST", body: fd });
+    } else {
+      const url = document.getElementById("repoUrl").value.trim();
+      if (!url) throw new Error("Paste a GitHub repo URL first.");
+      resp = await fetch(API_BASE + "/api/scan/repo", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, force }),
+      });
     }
     if (!resp.ok) {
       const body = await resp.text();

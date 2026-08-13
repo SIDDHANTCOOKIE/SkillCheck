@@ -199,6 +199,78 @@ def test_insufficient_context_low_severity_does_not_force_unverified():
     assert v.label == "NO_FINDINGS"
 
 
+# --- /api/scan/repo: GitHub URL validation (SSRF-style host tricks, embedded
+# credentials, non-https, path traversal) --------------------------------
+
+def test_normalize_github_url_accepts_a_plain_repo_url():
+    from api.main import _normalize_github_url
+    assert _normalize_github_url("https://github.com/anthropics/skills") == \
+        "https://github.com/anthropics/skills.git"
+    assert _normalize_github_url("https://github.com/anthropics/skills.git") == \
+        "https://github.com/anthropics/skills.git"
+    assert _normalize_github_url("https://github.com/anthropics/skills/") == \
+        "https://github.com/anthropics/skills.git"
+
+
+@pytest.mark.parametrize("bad_url", [
+    "http://github.com/anthropics/skills",  # not https
+    "https://github.com.evil.com/anthropics/skills",  # lookalike host
+    "https://evil.com/github.com/anthropics/skills",  # host in path, not host
+    "https://github.com@evil.com/anthropics/skills",  # @-authority trick
+    "https://user:pass@github.com/anthropics/skills",  # embedded credentials
+    "https://github.com:8443/anthropics/skills",  # unexpected port
+    "https://github.com/anthropics",  # missing repo segment
+    "https://github.com//",  # no segments at all
+    "https://github.com/../../etc/passwd",  # path traversal
+    "https://github.com/anthropics/../secrets",  # traversal in second segment
+    "ftp://github.com/anthropics/skills",  # non-http(s) scheme
+    "not-a-url-at-all",
+])
+def test_normalize_github_url_rejects_ssrf_and_injection_tricks(bad_url):
+    from fastapi import HTTPException
+    from api.main import _normalize_github_url
+    with pytest.raises(HTTPException) as exc_info:
+        _normalize_github_url(bad_url)
+    assert exc_info.value.status_code == 400
+
+
+def test_scan_repo_endpoint_rejects_bad_url_as_400_not_500():
+    from fastapi.testclient import TestClient
+    from api.main import app
+
+    client = TestClient(app)
+    resp = client.post("/api/scan/repo", json={"url": "https://evil.com/x/y"})
+    assert resp.status_code == 400
+
+
+def test_scan_repo_endpoint_scans_the_normalized_clone_url(monkeypatch, tmp_path):
+    """The endpoint must call the pipeline with the rebuilt, validated clone
+    URL — never the raw request body — and must not touch the network in
+    this test (scan() is monkeypatched). Also isolates the report store to a
+    throwaway DB: without this, the fake NO_FINDINGS result gets persisted
+    under the real anthropics/skills.git cache key in the shared dev
+    skillcheck_reports.db, and a later *real* scan of that same URL would
+    silently be served this stub instead of an actual result."""
+    from fastapi.testclient import TestClient
+    import api.main as main_module
+    from skillcheck import store as store_module
+
+    monkeypatch.setattr(store_module, "DB_PATH", tmp_path / "test_reports.db")
+
+    seen = {}
+
+    def fake_scan(source=None, *, text_blob=None):
+        seen["source"] = source
+        return scan(text_blob=("SKILL.md", "# clean\n\nJust formats text.\n"))
+
+    monkeypatch.setattr(main_module, "scan", fake_scan)
+    client = TestClient(app=main_module.app)
+    resp = client.post("/api/scan/repo", json={"url": "https://github.com/anthropics/skills"})
+    assert resp.status_code == 200
+    assert seen["source"] == "https://github.com/anthropics/skills.git"
+    assert resp.json()["label"] == "NO_FINDINGS"
+
+
 # --- unresolved local references: a lone pasted SKILL.md can't clear content
 # it never saw (scripts dir / references dir / split-across-files evasions,
 # each previously NO_FINDINGS when submitted as pasted text rather than a

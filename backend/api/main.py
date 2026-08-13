@@ -10,10 +10,12 @@ freshness caveat around OSV data in a cached report.
 """
 from __future__ import annotations
 
+import re
 import tempfile
 import time
 from collections import defaultdict, deque
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -86,6 +88,50 @@ class TextScanRequest(BaseModel):
     name: str = "SKILL.md"
     text: str
     force: bool = False
+
+
+class RepoScanRequest(BaseModel):
+    url: str
+    force: bool = False
+
+
+# Owner/repo path segments, GitHub's own allowed charset (alnum, `.`, `-`,
+# `_`), first char alnum. Anything failing this never reaches `git clone`'s
+# argument list.
+_GITHUB_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+
+
+def _normalize_github_url(raw: str) -> str:
+    """Reduce an attacker-supplied string to a `github.com/<owner>/<repo>`
+    clone URL, or reject it. The clone URL handed to `git clone` (ingest.py)
+    is always rebuilt from the validated owner/repo segments below, never
+    from the raw input — so a lookalike host (`github.com.evil.com`),
+    embedded credentials (`user:pass@github.com`), an `@`-authority trick
+    (`github.com@evil.com`), a non-https scheme, or a path-traversal segment
+    never reaches the subprocess, regardless of what slipped past any single
+    check below.
+    """
+    try:
+        parts = urlsplit(raw.strip())
+    except ValueError as e:
+        raise HTTPException(400, f"invalid URL: {e}") from e
+    if parts.scheme != "https":
+        raise HTTPException(400, "only https:// GitHub URLs are accepted")
+    if parts.username or parts.password:
+        raise HTTPException(400, "URL must not contain embedded credentials")
+    if parts.hostname != "github.com":
+        raise HTTPException(400, "only github.com URLs are accepted")
+    if parts.port not in (None, 443):
+        raise HTTPException(400, "unexpected port in URL")
+    segments = [s for s in parts.path.strip("/").split("/") if s]
+    if len(segments) < 2:
+        raise HTTPException(400, "URL must point at a github.com/<owner>/<repo>")
+    owner, repo = segments[0], segments[1]
+    if repo.endswith(".git"):
+        repo = repo[:-4]
+    if not _GITHUB_SEGMENT_RE.match(owner) or not _GITHUB_SEGMENT_RE.match(repo):
+        raise HTTPException(400, "owner/repo contains unexpected characters")
+    return f"https://github.com/{owner}/{repo}.git"
 
 
 def _respond(content_bytes: bytes, force: bool, run_scan) -> JSONResponse:
@@ -162,6 +208,18 @@ def scan_upload(request: Request, file: UploadFile = File(...), force: bool = Fa
             Path(tmp_path).unlink(missing_ok=True)
 
     return _respond(contents, force, run)
+
+
+@app.post("/api/scan/repo")
+def scan_repo(req: RepoScanRequest, request: Request):
+    _enforce_rate_limit(request)
+    clone_url = _normalize_github_url(req.url)
+    # Cache key is the normalized clone URL, not a commit SHA — ingest.py's
+    # `git clone --depth 1` doesn't resolve one back to the caller. Same
+    # caveat as OSV data in a cached report (see module docstring): a repeat
+    # scan of the same URL serves the first scan's result until `force=true`
+    # bypasses it, even if the repo has since changed.
+    return _respond(clone_url.encode("utf-8"), req.force, lambda: scan(clone_url))
 
 
 @app.get("/api/report/{report_id}")

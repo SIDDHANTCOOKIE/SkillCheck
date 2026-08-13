@@ -148,6 +148,7 @@
 
   .example-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
   .example-label { font-size: 0.78rem; font-weight: 600; color: var(--text-dim); font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em; }
+  .hint { font-size: 12.5px; color: var(--text-dim); margin-top: 8px; line-height: 1.6; }
   .chip {
     background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim);
     border-radius: var(--radius-sm); padding: 6px 12px; font-size: 0.8rem; cursor: pointer; font-family: var(--mono);
@@ -291,6 +292,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="paste">Paste SKILL.md</button>
       <button class="tab" data-tab="upload">Upload package</button>
+      <button class="tab" data-tab="repo">GitHub URL</button>
     </div>
 
     <div id="tab-paste">
@@ -317,6 +319,14 @@
     <div id="tab-upload" class="hidden">
       <label>Skill package or file (.zip, .tar.gz, or a bare SKILL.md)</label>
       <input type="file" id="uploadFile" accept=".zip,.tar,.gz,.tgz,.md,.markdown" />
+    </div>
+
+    <div id="tab-repo" class="hidden">
+      <label>Public GitHub repository URL</label>
+      <input type="text" id="repoUrl" placeholder="https://github.com/owner/repo" />
+      <p class="hint">Clones the default branch (shallow) and scans the whole package —
+        this is the only submission mode that can see everything a SKILL.md references
+        (bundled scripts, references/ files) rather than just the pasted text.</p>
     </div>
 
     <div class="row" style="margin-top:18px;">
