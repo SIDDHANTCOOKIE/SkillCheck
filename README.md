@@ -143,10 +143,32 @@ variables, falling back to a deterministic heuristic tiering when no LLM key is 
 
 `render.yaml` defines a single Render Blueprint web service (`skillcheck`), built from
 `backend/Dockerfile` with the repo root as build context (so the image can copy both `backend/` and
-`frontend/`), health-checked at `/api/health`, with `autoDeploy: true`. `.github/workflows/keepalive.yml`
-curls that health endpoint every 10 minutes (plus manual dispatch) to stop Render's free-tier instance
-from cold-starting; it is not a test/build/deploy CI pipeline. Deployed at
+`frontend/`), health-checked at `/api/health`, with `autoDeploy: true`. Deployed at
 [skillcheck-1r47.onrender.com](https://skillcheck-1r47.onrender.com/).
+
+### Free-tier cold starts
+
+Render's free tier spins the instance down after ~15 minutes idle; the next real request pays a
+~30-50s cold start. Two independent layers handle this, because either one can fail on its own:
+
+1. **`.github/workflows/keepalive.yml`** pings `/api/health` every 10 minutes (plus manual dispatch) to
+   stop the instance from ever going idle. This requires the `SKILLCHECK_URL` repo variable to be set
+   (Settings → Secrets and variables → Actions → Variables) — without it the workflow no-ops silently
+   rather than failing loudly, so a service that "goes down often" despite this workflow existing is
+   usually that variable never having been set. A GitHub Actions cron schedule is also best-effort, not
+   guaranteed — GitHub can delay or skip a scheduled run under load, and disables scheduled workflows
+   entirely after 60 days with no push to the repo — so this layer alone isn't something the frontend
+   can assume worked.
+2. **The frontend retries through a cold start instead of just failing.** `frontend/app.js` fires a
+   fire-and-forget `/api/health` ping on page load (so an instance already starts waking while a visitor
+   is still reading or pasting), and every scan/report request goes through
+   `fetchWithColdStartRetry` — which retries only a rejected fetch or a 502/503/504 (the shapes a
+   spinning-up instance actually produces), backing off over roughly a minute, and updates the loading
+   indicator to say the server is waking up rather than leaving the page looking hung or broken. A real
+   4xx or an error the running app itself raised is returned immediately, not retried.
+
+Layer 2 doesn't depend on layer 1 being configured correctly, so a visitor gets a working (if slower)
+first scan even if the keepalive workflow's repo variable was never set.
 
 ![AO kanban board](assets/kanban.png)
 

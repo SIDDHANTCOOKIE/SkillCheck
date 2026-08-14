@@ -1,5 +1,53 @@
 const API_BASE = "";
 
+// --- cold-start handling -------------------------------------------------
+// The deployed instance runs on Render's free tier, which spins down after
+// ~15 minutes idle (a keepalive GitHub Action pings it on a schedule, but a
+// scheduled workflow has no delivery guarantee — GitHub can delay or skip a
+// run, and silently stops running it altogether after 60 days with no
+// repository push). So the frontend can't assume the backend is warm and
+// has to handle a cold instance itself rather than depending on the ping
+// alone: a woken container takes Render ~30-50s to accept a connection, and
+// a plain fetch during that window either hangs with no feedback or throws
+// a bare "Failed to fetch", both of which read as the service being down
+// rather than starting up.
+const COLD_START_RETRY_DELAYS_MS = [1000, 2000, 3000, 5000, 8000, 8000, 8000, 8000, 8000, 8000];
+const COLD_START_STATUS_CODES = new Set([502, 503, 504]);
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Retries only the two failure shapes a spinning-up instance actually
+// produces (a rejected fetch — connection refused/reset before the
+// container is listening — or a 502/503/504 from the platform's proxy while
+// the app boots behind it). Anything else — a 4xx, a 200 with an error
+// body, a 500 the running app itself raised — is a real answer, not a cold
+// start, and is returned/thrown immediately without retrying it.
+async function fetchWithColdStartRetry(url, options, onWaking) {
+  let lastError;
+  for (let attempt = 0; attempt <= COLD_START_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const resp = await fetch(url, options);
+      if (!COLD_START_STATUS_CODES.has(resp.status)) return resp;
+      lastError = new Error("Scan failed (" + resp.status + "): " + await resp.text().catch(() => ""));
+    } catch (e) {
+      lastError = e;
+    }
+    if (attempt === COLD_START_RETRY_DELAYS_MS.length) break;
+    if (onWaking) onWaking(attempt + 1);
+    await sleep(COLD_START_RETRY_DELAYS_MS[attempt]);
+  }
+  throw lastError;
+}
+
+// Fired once on page load, not tied to any user action or loading spinner:
+// a visitor who lands on the page and spends a few seconds reading before
+// pasting anything gets that time overlapped with the cold start instead of
+// added to it. Deliberately silent — failure here just means the retry loop
+// above does the same work when the user actually scans.
+fetch(API_BASE + "/api/health").catch(() => {});
+
 // --- theme -------------------------------------------------------------
 const root = document.documentElement;
 const themeToggleBtn = document.getElementById("themeToggle");
@@ -104,6 +152,7 @@ document.querySelectorAll(".chip[data-example]").forEach(chip => {
 
 const scanBtn = document.getElementById("scanBtn");
 const loading = document.getElementById("loading");
+const loadingText = document.getElementById("loadingText");
 const errorBox = document.getElementById("error");
 const results = document.getElementById("results");
 
@@ -316,30 +365,32 @@ async function runScan({ force = false } = {}) {
 
   let resp;
   scanBtn.disabled = true;
+  loadingText.textContent = "Scanning…";
   loading.classList.remove("hidden");
+  const onWaking = () => { loadingText.textContent = "Waking up the server — first request after idle can take up to a minute…"; };
   try {
     if (activeTab === "paste") {
       const text = document.getElementById("pasteText").value;
       const name = document.getElementById("pasteName").value || "SKILL.md";
       if (!text.trim()) throw new Error("Paste some skill content first.");
-      resp = await fetch(API_BASE + "/api/scan/text", {
+      resp = await fetchWithColdStartRetry(API_BASE + "/api/scan/text", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, text, force, ...llmFields }),
-      });
+      }, onWaking);
     } else if (activeTab === "upload") {
       const fileInput = document.getElementById("uploadFile");
       if (!fileInput.files.length) throw new Error("Choose a file to upload.");
       const fd = new FormData();
       fd.append("file", fileInput.files[0]);
       const params = new URLSearchParams({ force: String(force), ...llmFields });
-      resp = await fetch(API_BASE + "/api/scan/upload?" + params.toString(), { method: "POST", body: fd });
+      resp = await fetchWithColdStartRetry(API_BASE + "/api/scan/upload?" + params.toString(), { method: "POST", body: fd }, onWaking);
     } else {
       const url = document.getElementById("repoUrl").value.trim();
       if (!url) throw new Error("Paste a GitHub repo URL first.");
-      resp = await fetch(API_BASE + "/api/scan/repo", {
+      resp = await fetchWithColdStartRetry(API_BASE + "/api/scan/repo", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, force, ...llmFields }),
-      });
+      }, onWaking);
     }
     if (!resp.ok) {
       const body = await resp.text();
@@ -363,9 +414,14 @@ async function runScan({ force = false } = {}) {
 async function loadPermalinkFromUrl() {
   const id = new URLSearchParams(window.location.search).get("r");
   if (!id) return;
+  loadingText.textContent = "Loading…";
   loading.classList.remove("hidden");
   try {
-    const resp = await fetch(API_BASE + "/api/report/" + encodeURIComponent(id));
+    const resp = await fetchWithColdStartRetry(
+      API_BASE + "/api/report/" + encodeURIComponent(id),
+      undefined,
+      () => { loadingText.textContent = "Waking up the server — first request after idle can take up to a minute…"; },
+    );
     if (!resp.ok) throw new Error("That report link is gone or invalid.");
     const data = await resp.json();
     renderVerdict(data);
