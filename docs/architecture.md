@@ -1,10 +1,14 @@
-← [README](../README.md)
+← [README](../README.md) · [Detection model](detection-model.md)
 
 # Architecture
 
 Two parts: the analysis model (`backend/skillcheck/`) that decides what a skill is doing, and the
 frontend that presents its output. The analysis model is the core of the project — the frontend is a
 thin, framework-free presentation layer over it.
+
+This document covers **how** the system is wired: modules, stage order, data flow.
+[detection-model.md](detection-model.md) covers **what** it looks for and why — the four signal
+classes, the rule inventory, the determinism boundary, and the known blind spots.
 
 ## Analysis model
 
@@ -19,9 +23,12 @@ flowchart TD
     B --> C[decode.py<br/>recursive base64/hex/rot13 decode cascade]
     C --> D["detectors/*<br/>prose · code · shell · secrets · unicode · extended"]
     D --> E[osv_client.py<br/>dependency manifests -> OSV.dev]
-    D --> F[graph.py<br/>component graph + capability chains]
+    D --> F[graph.py<br/>component graph + load_stage]
+    F --> S[structure.py<br/>hooks · permissions · MCP · subagents · endpoint override · install-time exec]
+    S --> U["graph.py::mark_unattended_nodes<br/>hook/install-triggered nodes -> load_stage 'unattended'"]
+    U --> CH[graph.py::build_capability_chains]
     E --> G[corroboration.py<br/>reputation · provenance · sink-reachability · chains · scope mismatch]
-    F --> G
+    CH --> G
     G --> H[adjudicator.py<br/>LLM tiering or deterministic heuristic fallback]
     H --> I[coverage.py<br/>analysed / partial / unanalysed ledger]
     I --> J[verdict.py::decide_verdict<br/>MALICIOUS · DANGEROUS · SUSPICIOUS · UNVERIFIED · NO_FINDINGS]
@@ -52,6 +59,39 @@ layer of every file: `prose` (natural-language intent), `code` (AST-based Python
 Each is independently catchable — a detector crash becomes an `SC-SCN1` integrity finding instead of an
 unhandled exception.
 
+Every entry in `ALL_DETECTORS` shares one `(rel_path, text, provenance)` per-fragment signature and is
+invoked once per file, code block, and decoded span. Rule inventory and per-family rationale live in
+[detection-model.md](detection-model.md#four-signal-classes).
+
+### Structure stage
+
+`structure.py::detect_structure` runs as its own pipeline stage rather than as a `detectors/` entry,
+because its checks are package-level: they need the whole file set and the component graph at once, and
+they read *parsed manifests* rather than text fragments. It answers a question no content detector asks
+— what does the bundle **declare**, as opposed to what does it say?
+
+Eight rules, `SC-ST1`–`SC-ST8`: event hooks, permission-gate weakening, bundled MCP servers, subagent
+definitions, unreferenced bundled code, harness endpoint/proxy override, `statusLine` command
+execution, and install-time execution (npm lifecycle scripts, in-tree PEP 517 backends). A skill
+shipping only those files would otherwise score `NO_FINDINGS`.
+
+Two properties are load-bearing and deliberately not schema-bound:
+
+- `_hook_commands` walks for any `command` key under an event at any nesting, over a bounded
+  breadth-first queue (`_MAX_NESTING_HOPS`, `_MAX_COMMANDS_PER_MANIFEST`) rather than matching the
+  documented block layout — the schema has changed before, and iterative traversal also means hostile
+  nesting can't exhaust the stack.
+- `_scope_is_unbounded` decides whether a permission grant restricts anything by asking whether its
+  scope contains any alphanumeric character, rather than comparing against a list of known wildcard
+  spellings.
+
+Its output feeds `graph.py::mark_unattended_nodes`, which promotes any node a hook or install script
+executes to `load_stage = "unattended"` before capability chains are built — so downstream stages score
+that file as the unsupervised code it turns out to be.
+
+Unparseable JSON at a harness-config path emits `SC-SCN1` rather than being skipped: a config that
+couldn't be read is unread content, not absent content.
+
 ### Capability taxonomy
 
 Every finding is tagged with one `Capability` (`backend/skillcheck/models.py`):
@@ -72,6 +112,11 @@ Findings also carry a `Severity` (`low`, `medium`, `high`, `critical`) independe
 - `graph.py::build_component_graph` builds a graph of files and the references between them (e.g. a
   SKILL.md pointing at a bundled script), and flags any reference to a file that wasn't actually part
   of the scan as `SC-REF1` (an unscanned reference) rather than silently ignoring it.
+- Each node also carries a `load_stage` — `unattended` · `immediate` · `on-demand` · `runtime` ·
+  `unreachable` — so *when* content reaches the model is a property of the graph rather than an
+  assumption. `mark_unattended_nodes` promotes hook- and install-triggered nodes to `unattended`, the
+  strongest rung, since nothing has to read them for them to run. This runs after the structure stage
+  and before anything downstream reads `load_stage`.
 - `graph.py::build_capability_chains` links findings across that graph into `Chain`s — e.g. a
   credential-read finding in one file connected to an exfiltration sink in another — because a
   capability chain across files is stronger evidence than either finding alone.

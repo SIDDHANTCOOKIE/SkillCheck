@@ -30,8 +30,21 @@ SINK_CAPS = {Capability.EXFILTRATION, Capability.STAGE2_FETCH, Capability.HIDDEN
 class ComponentNode:
     path: str
     reachable_from_root: bool = False
-    load_stage: str = "unreachable"  # immediate | on-demand | runtime | unreachable
+    load_stage: str = "unreachable"  # unattended | immediate | on-demand | runtime | unreachable
     edges_out: list[str] = field(default_factory=list)
+
+
+# structure.py rule ids whose finding names a file that runs, or is granted,
+# with nothing deciding: no model turn, no confirmation, and for a couple of
+# these not even the skill being invoked. A hook fires on an event; an
+# in-tree PEP 517 backend or an npm postinstall script runs at install time;
+# a bypassPermissions/unscoped-tool grant switches off the approval step
+# itself; an MCP server's and a subagent's content load into context before
+# the skill is ever invoked. Not imported from structure.py — graph.py is a
+# dependency of structure.py (ComponentGraph), so the relationship only goes
+# one way; these ids are the contract between the two, not a re-detection of
+# what structure.py already found.
+UNATTENDED_STRUCTURE_RULES = frozenset({"SC-ST1", "SC-ST2", "SC-ST3", "SC-ST4", "SC-ST8"})
 
 
 @dataclass
@@ -165,6 +178,22 @@ def build_component_graph(
             frontier = nxt
 
     return ComponentGraph(nodes=nodes, root=root), unresolved
+
+
+def mark_unattended_nodes(graph: ComponentGraph, structure_findings: list[Finding]) -> None:
+    """Promote a node to load_stage 'unattended' wherever structure.py found
+    one of UNATTENDED_STRUCTURE_RULES on it. Called after detect_structure()
+    runs and before anything downstream reads load_stage (capability-chain
+    building, corroborate_sink_reachability, verdict.py's corroborated-medium
+    check) — 'immediate' already meant "SKILL.md itself"; this is the one
+    file/setting away from that, one rung up, for the files whose content
+    doesn't wait on the skill being invoked at all."""
+    for f in structure_findings:
+        if f.rule_id not in UNATTENDED_STRUCTURE_RULES:
+            continue
+        node = graph.nodes.get(f.file)
+        if node is not None:
+            node.load_stage = "unattended"
 
 
 # --- capability graph --------------------------------------------------------

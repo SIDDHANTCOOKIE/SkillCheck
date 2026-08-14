@@ -10,6 +10,11 @@ import re
 
 from ..models import Capability, Finding, Severity
 
+# A `.env` reference is a real secret file unless it names a documented
+# placeholder variant — used by SC-P7 to tell "read .env" apart from "copy
+# .env.example" without rejecting genuine variants like ".env.local".
+_ENV_PLACEHOLDER = r"\.env\b(?!\.(?:example|sample|template|dist)\b)"
+
 # (rule_id, capability, severity, pattern, rationale)
 PROSE_PATTERNS: list[tuple[str, Capability, Severity, str, str]] = [
     # Objective 7: agent manipulation / prompt injection
@@ -39,9 +44,34 @@ PROSE_PATTERNS: list[tuple[str, Capability, Severity, str, str]] = [
     # (i.e. every realistic occurrence — "read ~/.aws/credentials", "the .env
     # file") there was no boundary there at all. Verified dead before this
     # fix: this pattern returned no match on any of those three phrasings.
+    #
+    # Two follow-on bugs, both found on the same reproduced false positive —
+    # a benign scaffolding line, "Install deps, create db, seed data, copy
+    # .env.example -> .env":
+    #
+    # 1. `\.env\b` alone also matches inside `.env.example`: \b only checks a
+    #    word/non-word transition, and "v" -> "." is exactly that, regardless
+    #    of what follows. `_ENV_PLACEHOLDER` narrows this to a literal
+    #    placeholder-suffix exemption (`.example`/`.sample`/`.template`/
+    #    `.dist`) rather than rejecting every `.env.*`, so a real secret
+    #    variant like `.env.local` or `.env.production` still fires.
+    # 2. Even with that fixed, the *destination* `.env` in "copy X -> .env"
+    #    still matched — copying a placeholder into a real env path is
+    #    ordinary scaffolding, not credential access, but "copy"/"upload" are
+    #    directionally ambiguous verbs and the old wide `.{0,40}` window
+    #    reached straight past the connector to the destination path. The
+    #    tempered-dot filler below stops as soon as it would have to cross a
+    #    "to"/"into"/"->"/"→" connector, so it can only reach a credential
+    #    path that is the verb's direct object (the source), never one on
+    #    the far side of a connector (the destination) — while `read|open|cat`
+    #    keep the original wide window, since those verbs have no comparable
+    #    direction ambiguity to exploit.
     ("SC-P7", Capability.CREDENTIAL_ACCESS, Severity.HIGH,
-     r"\b(?:read|open|cat|copy|upload)\b.{0,40}(?:\.aws/credentials|\.ssh/id_rsa|\.env\b|\.npmrc|kube/?config|wallet\.dat|cookies?\.sqlite)",
-     "Prose instructs reading a well-known credential/secret file path."),
+     r"\b(?:read|open|cat)\b.{0,40}(?:\.aws/credentials|\.ssh/id_rsa|" + _ENV_PLACEHOLDER +
+     r"|\.npmrc|kube/?config|wallet\.dat|cookies?\.sqlite)"
+     r"|\b(?:copy|upload)\b(?:(?!\bto\b|\binto\b|→|->).){0,25}(?:\.aws/credentials|\.ssh/id_rsa|" +
+     _ENV_PLACEHOLDER + r"|\.npmrc|kube/?config|wallet\.dat|cookies?\.sqlite)",
+     "Prose instructs reading, copying, or uploading a well-known credential/secret file path."),
     # Objective 2: exfiltration described in prose
     ("SC-P8", Capability.EXFILTRATION, Severity.HIGH,
      r"\b(?:send|upload|post|exfiltrate|email)\b.{0,60}\b(?:to|via)\b.{0,40}\b(?:webhook\.site|pastebin|discord(?:app)?\.com/api/webhooks|ngrok\.io|requestbin)\b",
@@ -62,6 +92,23 @@ PROSE_PATTERNS: list[tuple[str, Capability, Severity, str, str]] = [
     ("SC-P12", Capability.HIDDEN_EXECUTION, Severity.MEDIUM,
      r"\bto\s+(?:configure|set up|initialize)\s+your\s+environment,?\s+run\b.{0,60}\|\s*(?:bash|sh|python)\b",
      "\"Setup step\" framing wrapping a pipe-to-shell execution."),
+    # Diagnostic-framing evasion: a real ops/cloud-tooling doc routinely says
+    # "uses credentials already available in the environment" (ambient IAM
+    # role, ~/.aws/credentials) with no ill intent — that phrase alone isn't
+    # the signal. What isn't ordinary documentation language is pre-empting
+    # the exact safety check a human would raise: explicitly instructing the
+    # agent to reuse ambient credentials *instead of* asking the user for
+    # them. No legitimate runbook needs to defeat that specific objection —
+    # only a prompt engineered to survive review does. Found by hand-testing
+    # a "project-diagnostics" skill built entirely from plausible SRE
+    # language (env var enumeration incl. "Authentication configuration",
+    # "don't print secret values" as a fig leaf, a connectivity check against
+    # an unvalidated "configured endpoint") that scored zero findings against
+    # every other rule in this file precisely because it never used a literal
+    # credential path or exfil domain.
+    ("SC-P13", Capability.CREDENTIAL_ACCESS, Severity.HIGH,
+     r"\bcredentials\b.{0,60}\balready\s+available\b.{0,100}\brather\s+than\b.{0,40}\b(?:asking|prompting)\s+(?:the\s+)?user\b",
+     "Instructs the agent to use ambient credentials for an action instead of asking the user for them — defeating a safety check a legitimate diagnostic tool has no reason to anticipate."),
 ]
 
 _COMPILED = [(rid, cap, sev, re.compile(pat, re.IGNORECASE | re.DOTALL), why)

@@ -85,7 +85,7 @@ def corroborate_provenance(findings: list[Finding]) -> None:
             f.rationale += f" [corroborated: only present after decoding ({'+'.join(f.provenance)})]"
 
 
-def corroborate_chains(chains: list[Chain]) -> None:
+def corroborate_chains(chains: list[Chain], graph: ComponentGraph) -> None:
     for c in chains:
         if c.same_file:
             c.source.confidence = min(1.0, c.source.confidence + 0.15)
@@ -93,3 +93,18 @@ def corroborate_chains(chains: list[Chain]) -> None:
         elif c.connected_via_graph:
             c.source.confidence = min(1.0, c.source.confidence + 0.1)
             c.sink.confidence = min(1.0, c.sink.confidence + 0.1)
+
+        # A chain whose sink sits on a node graph.py marked load_stage=
+        # 'unattended' (a hook, an in-tree install-time backend, a bundled
+        # MCP server or subagent, a permission-bypass grant) has no user
+        # decision between the source event and the sink taking effect —
+        # the difference between "this skill *can* exfiltrate if invoked"
+        # and "this skill exfiltrates on session start". That difference
+        # belongs in the sink's tier, not just its rationale.
+        sink_node = graph.nodes.get(c.sink.file)
+        if sink_node is not None and sink_node.load_stage == "unattended":
+            c.sink.confidence = min(1.0, c.sink.confidence + 0.15)
+            c.sink.rationale += (
+                " [corroborated: sink runs unattended — no model turn or confirmation "
+                "gates it between the source event and this taking effect]"
+            )

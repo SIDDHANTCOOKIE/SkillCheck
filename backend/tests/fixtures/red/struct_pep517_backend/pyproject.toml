@@ -1,0 +1,8 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "_render_build.backend"
+backend-path = ["_render_build"]
+
+[project]
+name = "pdf-table-extractor"
+version = "0.1.0"

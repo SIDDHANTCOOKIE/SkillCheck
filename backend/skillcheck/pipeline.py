@@ -5,20 +5,21 @@ import ast
 from dataclasses import dataclass
 
 from . import corroboration
-from .adjudicator import adjudicate
+from .adjudicator import adjudicate, semantic_scan
 from .coverage import build_ledger
-from .decode import decode_cascade
+from .decode import decode_cascade, deobfuscate_text
 from .detectors import ALL_DETECTORS
-from .graph import build_capability_chains, build_component_graph
+from .graph import build_capability_chains, build_component_graph, mark_unattended_nodes
 from .ingest import IngestResult, cleanup, ingest_path, ingest_text_blob
 from .models import CapabilityChain, Capability, Finding, Severity, Verdict
 from .osv_client import find_manifests, query_osv
 from .parse_markdown import parse_document
 from .report import annotate_attack_ids, to_json, to_markdown
+from .structure import detect_structure
 from .verdict import decide_verdict
 
 MAX_FILE_BYTES = 2_000_000
-RULESET_VERSION = "2"  # bump whenever detector/scoring logic changes meaning of a cached report
+RULESET_VERSION = "3"  # bump whenever detector/scoring logic changes meaning of a cached report
 
 
 @dataclass
@@ -204,6 +205,22 @@ def _scan_ingested(result: IngestResult, *, llm_override: tuple[str, str] | None
                 f_.end_line = origin_line
             all_findings.extend(decoded)
 
+        # Character-level de-obfuscation: zero-width joins, tag-character
+        # smuggling, homoglyph substitution. Unlike the byte-encoding spans
+        # above, this transform touches the whole file and — by construction
+        # (decode.py's deobfuscate_text docstring) — never adds or removes a
+        # newline, so the result lines up with the original file 1:1 and can
+        # go straight through the same line-counting detectors with no
+        # offset correction, the same way the plain-file branch above does.
+        # The raw text is still scanned everywhere above this — de-obfuscating
+        # only ever adds findings the raw pass couldn't see; it never
+        # replaces the SC-U1/SC-U2/SC-U3 findings that fire on the hidden
+        # characters themselves.
+        deobfuscated = _scan_stage("deobfuscate", failed_layers, deobfuscate_text, text, default=None)
+        if deobfuscated:
+            deob_text, techniques = deobfuscated
+            all_findings.extend(_run_detectors(f.rel_path, deob_text, techniques, failed_layers))
+
     manifests = _scan_stage("dependency", failed_layers, find_manifests, file_texts, default={})
     all_findings.extend(_scan_stage("osv", failed_layers, query_osv, manifests, default=[]) or [])
 
@@ -213,6 +230,34 @@ def _scan_ingested(result: IngestResult, *, llm_override: tuple[str, str] | None
         graph, unresolved_refs = ComponentGraph(nodes={}, root=None), []
     else:
         graph, unresolved_refs = graph_result
+    # Config-as-code: hooks, permission grants, bundled MCP servers, subagent
+    # definitions, and unreferenced scripts. Package-level rather than a
+    # per-fragment detector, so it runs as its own stage once the component
+    # graph (needed for SC-ST5's reachability check) exists.
+    structure_findings = _scan_stage(
+        "structure", failed_layers, detect_structure,
+        result.files, file_texts, graph, default=[],
+    ) or []
+    # A single unparseable manifest surfaces as its own SC-SCN1 finding
+    # rather than raising (one bad settings.json shouldn't take down hook/
+    # permission/MCP detection for every other file in the bundle) — but
+    # that means it never reaches the try/except in _scan_stage, so nothing
+    # would otherwise record it in failed_layers. Without this, a skill
+    # whose *only* structural fact is "this config didn't parse" scored
+    # NO_FINDINGS instead of the UNVERIFIED the rest of the scanner promises
+    # for content it couldn't read (I1/I3).
+    for f in structure_findings:
+        if f.rule_id == "SC-SCN1" and f.detector == "structure":
+            tag = f"structure-manifest:{f.file}"
+            if tag not in failed_layers:
+                failed_layers.append(tag)
+    all_findings.extend(structure_findings)
+    # A hook/MCP-server/subagent/permission-bypass/install-time-exec finding
+    # names a file that runs (or is granted) with nothing deciding — one rung
+    # past "immediate" on the load_stage ladder. Must run after structure
+    # detection and before anything below reads load_stage.
+    mark_unattended_nodes(graph, structure_findings)
+
     for ref in unresolved_refs:
         origin_line = _line_of(file_texts[ref.file], ref.offset)
         all_findings.append(Finding(
@@ -232,12 +277,34 @@ def _scan_ingested(result: IngestResult, *, llm_override: tuple[str, str] | None
             confidence=1.0,
             detector="component-graph",
         ))
+    # Independent LLM read of the raw prose, regardless of what the
+    # deterministic layer above found — closes the gap where a skill using
+    # no literal known-bad keyword scores NO_FINDINGS and adjudicate() below
+    # never even runs (it only ranks findings that already exist; given zero
+    # it returns immediately). A no-op with zero cost when no LLM provider
+    # is configured (semantic_scan() returns [] cleanly) or a request never
+    # brought its own key. Skipped once a CRITICAL finding already exists —
+    # the verdict is already at its ceiling, so spending the call adds cost
+    # without adding information.
+    #
+    # `heightened=not all_findings`: when every rule/AST/structure layer that
+    # ran before this point found literally nothing, this pass is the only
+    # review the package gets before a clean verdict — see
+    # SEMANTIC_HEIGHTENED_SUFFIX in adjudicator.py.
+    if not any(f.severity == Severity.CRITICAL for f in all_findings):
+        semantic_findings = _scan_stage(
+            "semantic-pass", failed_layers,
+            lambda: semantic_scan(file_texts, llm_override, heightened=not all_findings),
+            default=[],
+        )
+        all_findings.extend(semantic_findings or [])
+
     chains = _scan_stage("capability-graph", failed_layers, build_capability_chains, all_findings, graph, default=[])
 
     _scan_stage("corroborate-provenance", failed_layers, corroboration.corroborate_provenance, all_findings)
     _scan_stage("corroborate-reputation", failed_layers, corroboration.corroborate_reputation, all_findings, file_texts)
     _scan_stage("corroborate-reachability", failed_layers, corroboration.corroborate_sink_reachability, all_findings, graph)
-    _scan_stage("corroborate-chains", failed_layers, corroboration.corroborate_chains, chains)
+    _scan_stage("corroborate-chains", failed_layers, corroboration.corroborate_chains, chains, graph)
     scope_mismatch = _scan_stage(
         "corroborate-scope", failed_layers, corroboration.corroborate_scope_mismatch,
         all_findings, frontmatter_by_file, default=False,

@@ -13,6 +13,7 @@ import re
 import urllib.error
 import urllib.request
 
+from .decode import deobfuscate_text
 from .models import Capability, Finding, Severity
 
 OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
@@ -44,18 +45,30 @@ def _parse_package_json(text: str) -> list[tuple[str, str]]:
 
 
 def find_manifests(file_texts: dict[str, str]) -> dict[str, list[tuple[str, str]]]:
-    """Returns {file_path: [(package_name, version), ...]}."""
+    """Returns {file_path: [(package_name, version), ...]}.
+
+    Parses the de-obfuscated form of the manifest, not the raw bytes. Every
+    other detector in this scanner reads a document as prose, where a hidden
+    character is itself a finding (SC-U1/U2/U3) even if what it hides never
+    resolves — a manifest has no such fallback. `requests` spelled with a
+    Cyrillic `е` matches no static rule, folds silently once de-confused
+    (SC-U3 goes quiet *because* de-confusion succeeds), and previously never
+    reached this parser's regexes at all, so the dependency it names was
+    never looked up and never scored.
+    """
     out: dict[str, list[tuple[str, str]]] = {}
     for path, text in file_texts.items():
         base = path.rsplit("/", 1)[-1]
+        if base not in ("requirements.txt", "package.json"):
+            continue
+        deobfuscated = deobfuscate_text(text)
+        working_text = deobfuscated[0] if deobfuscated else text
         if base == "requirements.txt":
-            deps = _parse_requirements_txt(text)
-            if deps:
-                out[path] = deps
-        elif base == "package.json":
-            deps = _parse_package_json(text)
-            if deps:
-                out[path] = deps
+            deps = _parse_requirements_txt(working_text)
+        else:
+            deps = _parse_package_json(working_text)
+        if deps:
+            out[path] = deps
     return out
 
 

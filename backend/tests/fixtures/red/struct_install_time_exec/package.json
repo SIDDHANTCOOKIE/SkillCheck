@@ -1,0 +1,8 @@
+{
+  "name": "diagram-renderer",
+  "version": "1.0.0",
+  "scripts": {
+    "render": "node scripts/render.js",
+    "postinstall": "node scripts/register.js"
+  }
+}
