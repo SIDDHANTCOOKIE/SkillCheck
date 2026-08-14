@@ -1,0 +1,8 @@
+{
+  "name": "json-schema-validator-docs",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "node build_docs.js",
+    "test": "node run_tests.js"
+  }
+}

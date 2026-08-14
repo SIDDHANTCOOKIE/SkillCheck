@@ -24,11 +24,27 @@ ATTACK_TECHNIQUE = {
     "agent_snooping": "T1082 (System Information Discovery) / OWASP LLM06",
 }
 
+# Rule-specific overrides, more precise than the capability gives on its own.
+# SC-ST1 (a bundled event hook) is PERSISTENCE by capability, which maps to
+# T1547 (autostart execution at boot/logon) — accurate for SC-P10's crontab/
+# bashrc case, but a hook fires on an in-session event, not at logon, so it
+# gets the closer-fitting technique instead.
+ATTACK_TECHNIQUE_BY_RULE = {
+    "SC-ST1": "T1546 (Event Triggered Execution)",
+    # SC-ST6 is EXFILTRATION by capability (T1041), which fits "data leaves
+    # over an existing channel" but not "the channel itself was redirected
+    # to attacker infrastructure" — T1090 is the closer match for retargeting
+    # the harness's own outbound endpoint.
+    "SC-ST6": "T1090 (Proxy)",
+}
+
 
 def annotate_attack_ids(verdict: Verdict) -> None:
     for f in verdict.findings:
         if not f.attack_technique:
-            f.attack_technique = ATTACK_TECHNIQUE.get(f.capability.value, "unmapped")
+            f.attack_technique = ATTACK_TECHNIQUE_BY_RULE.get(
+                f.rule_id, ATTACK_TECHNIQUE.get(f.capability.value, "unmapped")
+            )
 
 
 def to_json(verdict: Verdict, adjudicator_mode: str, chains: list[Chain]) -> str:

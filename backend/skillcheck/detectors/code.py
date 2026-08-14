@@ -167,6 +167,73 @@ def _line_of(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
+# --- shell command-splitting de-obfuscation ---------------------------------
+#
+# SHELL_PATTERNS matches command names literally ("curl", "wget", ...), so
+# two well-known evasions defeat it outright without needing any encoding:
+# splitting a command name with empty quote pairs (`cu''rl`) or single-char
+# quoting (`c'u'r'l`) — both are ordinary shell string concatenation, so the
+# shell runs `curl` either way — and substituting `$IFS` (the shell's field
+# separator variable) for the spaces between arguments (`curl$IFS-s$IFSurl`).
+# Neither trick changes what the shell executes; both were, until this pass,
+# enough to make the command invisible to every SC-SH* pattern.
+#
+# This is a normalization pass, not a shell parser: it doesn't tokenize or
+# understand quoting state, it just collapses the two specific constructions
+# above so the existing patterns can see through them. That's a deliberate,
+# narrow scope — a full grammar is what `docs/detection-model.md` lists as
+# the size of fix actually needed to close shell analysis generally; this
+# closes the two most common command-name evasions without taking on that
+# dependency.
+
+# An empty quote pair directly between two word characters concatenates to
+# nothing in the shell — `cu''rl` runs `curl`. Bounded to word-adjacent
+# quotes specifically so this doesn't touch a normal quoted argument like
+# `curl -s "$url"`, where the quotes sit next to whitespace or `$`, not a
+# bare word character on both sides.
+_EMPTY_QUOTE_SPLIT_RE = re.compile(r"(?<=[A-Za-z0-9_])(['\"])\1(?=[A-Za-z0-9_])")
+
+# A single quote character sitting between two word characters is the other
+# half of the same trick — `c'u'r'l` runs `curl` because each quoted single
+# character is still just that character to the shell. This one is lossier
+# than the empty-pair rule (it will also strip a real apostrophe inside a
+# double-quoted string, e.g. "it's" -> "its"), which is why it only ever
+# feeds the supplementary de-obfuscated pass below, never the evidence
+# quoted for a raw-text match.
+_SINGLE_QUOTE_MID_WORD_RE = re.compile(r"(?<=[A-Za-z0-9_])['\"](?=[A-Za-z0-9_])")
+
+# `$IFS`/`${IFS}` is the shell's field-separator variable; unset or default
+# it's a space. `$IFS$9` is the same trick with a harmless empty-variable
+# suffix appended, seen often enough in the wild to fold in here rather than
+# leave as a second silent gap.
+_IFS_SEPARATOR_RE = re.compile(r"\$\{?IFS\}?(?:\$\d)?")
+
+
+def _deobfuscate_shell(text: str) -> str:
+    """Collapse quote-splitting and $IFS-as-separator, or return `text`
+    unchanged if neither evasion is present.
+
+    Applied as a fixpoint over both quote rules together — collapsing one
+    can create the adjacency the other rule needs (`cu''rl` needs only the
+    empty-pair rule, but a mixed `c''u'r'l` needs a round of each) — bounded
+    at 20 iterations, which is far more than any real command name needs and
+    just a hard ceiling against pathological input.
+
+    Never removes a newline, only quote/`$IFS` characters, so a line number
+    computed against the returned text with `_line_of` stays correct: the
+    count of `\\n` characters before any surviving position is unchanged by
+    deleting non-newline characters earlier in the string.
+    """
+    out = text
+    for _ in range(20):
+        collapsed = _EMPTY_QUOTE_SPLIT_RE.sub("", out)
+        collapsed = _SINGLE_QUOTE_MID_WORD_RE.sub("", collapsed)
+        if collapsed == out:
+            break
+        out = collapsed
+    return _IFS_SEPARATOR_RE.sub(" ", out)
+
+
 def detect_shell_patterns(file_path: str, text: str, provenance: list[str] | None = None) -> list[Finding]:
     findings: list[Finding] = []
     for rid, cap, sev, rx, why in _SHELL_COMPILED:
@@ -181,6 +248,60 @@ def detect_shell_patterns(file_path: str, text: str, provenance: list[str] | Non
                 severity=sev,
                 rationale=why,
                 confidence=0.6,
+                provenance=list(provenance or []),
+                detector="shell-regex",
+            ))
+
+    deobfuscated = _deobfuscate_shell(text)
+    if deobfuscated != text:
+        raw_spans = {(f.start_line, f.rule_id) for f in findings}
+        recovered_rules: set[str] = set()
+        for rid, cap, sev, rx, why in _SHELL_COMPILED:
+            for m in rx.finditer(deobfuscated):
+                start_line = _line_of(deobfuscated, m.start())
+                if (start_line, rid) in raw_spans:
+                    continue  # already found on the raw text at this line
+                recovered_rules.add(rid)
+                findings.append(Finding(
+                    rule_id=rid,
+                    capability=cap,
+                    file=file_path,
+                    start_line=start_line,
+                    end_line=_line_of(deobfuscated, m.end()),
+                    matched_text=m.group(0).strip()[:400],
+                    severity=sev,
+                    rationale=(
+                        f"{why} Only visible after collapsing quote-splitting "
+                        "and/or $IFS-as-separator obfuscation in the source "
+                        "line — the raw text alone does not spell out this "
+                        "command."
+                    ),
+                    # A notch below the raw-text match on the same rule: this
+                    # went through a normalization heuristic rather than
+                    # matching the literal source, so it carries slightly
+                    # less certainty than seeing the command spelled out
+                    # directly.
+                    confidence=0.5,
+                    provenance=list(provenance or []) + ["shell-deobfuscated"],
+                    detector="shell-regex",
+                ))
+        if recovered_rules:
+            findings.append(Finding(
+                rule_id="SC-SH12",
+                capability=Capability.OBFUSCATION,
+                file=file_path,
+                start_line=1,
+                end_line=1,
+                matched_text=f"quote-splitting / $IFS obfuscation constructing: {', '.join(sorted(recovered_rules))}",
+                severity=Severity.MEDIUM,
+                rationale=(
+                    "This file uses quote-splitting (e.g. cu''rl) and/or $IFS "
+                    "in place of spaces to construct a shell command — a "
+                    "technique whose only purpose is defeating literal "
+                    "pattern matching on the command name, since the shell "
+                    "runs the exact same command either way."
+                ),
+                confidence=0.7,
                 provenance=list(provenance or []),
                 detector="shell-regex",
             ))

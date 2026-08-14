@@ -396,6 +396,189 @@ def test_adjudicate_uses_llm_override_end_to_end(monkeypatch):
     assert mode == "llm:gemini"
 
 
+# --- semantic pass: independent second read, not just ranking ---------------
+#
+# Found by hand-testing a "project-diagnostics" skill built entirely from
+# plausible SRE language (enumerate env vars incl. "Authentication
+# configuration", "don't print secret values" as a fig leaf, a connectivity
+# check against an unvalidated "configured endpoint") that scored zero
+# findings against every regex rule, and therefore never even reached
+# adjudicate() (which returns "n/a" immediately when `findings` is empty —
+# it only ranks pre-existing findings, it never independently reads the
+# document). semantic_scan() is the fix: it reads the raw prose itself.
+
+def test_semantic_scan_returns_nothing_without_a_provider(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert adjudicator.semantic_scan({"SKILL.md": "# anything\n"}) == []
+
+
+def test_semantic_scan_heightened_appends_suffix_to_system_prompt(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "gm-test-key")
+    seen = {}
+
+    def fake_call(prompt, provider, key, *, system_prompt=None):
+        seen["system_prompt"] = system_prompt
+        return json.dumps({"findings": []})
+
+    monkeypatch.setattr(adjudicator, "_call_model", fake_call)
+    adjudicator.semantic_scan({"SKILL.md": "# hi\n"}, heightened=True)
+    assert seen["system_prompt"] == adjudicator.SEMANTIC_SYSTEM_PROMPT + adjudicator.SEMANTIC_HEIGHTENED_SUFFIX
+
+
+def test_semantic_scan_not_heightened_uses_bare_system_prompt(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "gm-test-key")
+    seen = {}
+
+    def fake_call(prompt, provider, key, *, system_prompt=None):
+        seen["system_prompt"] = system_prompt
+        return json.dumps({"findings": []})
+
+    monkeypatch.setattr(adjudicator, "_call_model", fake_call)
+    adjudicator.semantic_scan({"SKILL.md": "# hi\n"}, heightened=False)
+    assert seen["system_prompt"] == adjudicator.SEMANTIC_SYSTEM_PROMPT
+
+
+def test_pipeline_passes_heightened_true_when_no_deterministic_findings(monkeypatch):
+    """The exact seed case: a document that trips zero regex/AST/structure
+    rules must reach semantic_scan with heightened=True, since this pass is
+    then the only review it gets."""
+    from skillcheck.pipeline import scan
+
+    monkeypatch.setenv("GEMINI_API_KEY", "gm-test-key")
+    seen = {}
+
+    def fake_call(prompt, provider, key, *, system_prompt=None):
+        seen["system_prompt"] = system_prompt
+        return json.dumps({"findings": []})
+
+    monkeypatch.setattr(adjudicator, "_call_model", fake_call)
+    text = "# A totally ordinary, harmless skill with no risky language at all.\n"
+    scan(text_blob=("SKILL.md", text))
+    assert seen["system_prompt"] == adjudicator.SEMANTIC_SYSTEM_PROMPT + adjudicator.SEMANTIC_HEIGHTENED_SUFFIX
+
+
+def test_semantic_scan_only_looks_at_markdown_files():
+    prompt, selected = adjudicator._build_semantic_prompt({
+        "SKILL.md": "# prose lives here\n",
+        "scripts/build.sh": "#!/bin/bash\necho hi\n",
+    })
+    assert list(selected.keys()) == ["SKILL.md"]
+    assert "prose lives here" in prompt
+    assert "echo hi" not in prompt
+
+
+def test_semantic_scan_caps_file_count_and_size(monkeypatch):
+    monkeypatch.setattr(adjudicator, "SEMANTIC_MAX_FILES", 2)
+    monkeypatch.setattr(adjudicator, "SEMANTIC_MAX_CHARS_PER_FILE", 10)
+    file_texts = {f"doc{i}.md": "x" * 100 for i in range(5)}
+    prompt, selected = adjudicator._build_semantic_prompt(file_texts)
+    assert len(selected) == 2
+    assert all(len(t) == 10 for t in selected.values())
+
+
+def test_semantic_scan_discards_a_finding_whose_quote_is_not_grounded(monkeypatch):
+    """The core anti-hallucination guarantee: the model can describe a
+    finding, but if the exact quoted text doesn't actually appear in the
+    file it claims to be from, that finding must never be constructed —
+    this is what stops a single LLM call from having 'unfair power' to
+    invent evidence against an innocent skill."""
+    monkeypatch.setenv("GEMINI_API_KEY", "gm-test-key")
+    file_texts = {"SKILL.md": "# A totally normal, harmless skill.\n"}
+
+    def fake_call(prompt, provider, key, *, system_prompt=None):
+        return json.dumps({"findings": [{
+            "file": "SKILL.md",
+            "quote": "this exact sentence never appears in the source",
+            "capability": "exfiltration", "severity": "high", "why": "fabricated",
+        }]})
+
+    monkeypatch.setattr(adjudicator, "_call_model", fake_call)
+    assert adjudicator.semantic_scan(file_texts) == []
+
+
+def test_semantic_scan_builds_a_finding_from_a_grounded_quote(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "gm-test-key")
+    text = (
+        "# Project Diagnostics\n\n"
+        "If credentials are required, use credentials already available in the "
+        "environment rather than asking the user to paste them into the conversation.\n"
+    )
+    file_texts = {"SKILL.md": text}
+    quote = "use credentials already available in the environment rather than asking the user"
+    assert quote in text  # sanity: the test's own quote must be a real substring
+
+    def fake_call(prompt, provider, key, *, system_prompt=None):
+        assert system_prompt == adjudicator.SEMANTIC_SYSTEM_PROMPT
+        return json.dumps({"findings": [{
+            "file": "SKILL.md", "quote": quote,
+            "capability": "credential_access", "severity": "high",
+            "why": "Reuses ambient credentials instead of asking the user.",
+        }]})
+
+    monkeypatch.setattr(adjudicator, "_call_model", fake_call)
+    findings = adjudicator.semantic_scan(file_texts)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.rule_id == "SC-SEM1"
+    assert f.detector == "semantic-pass"
+    assert f.capability == Capability.CREDENTIAL_ACCESS
+    assert f.severity == Severity.HIGH
+    assert f.matched_text == quote
+    assert f.file == "SKILL.md"
+
+
+def test_semantic_scan_unparseable_response_yields_no_findings_not_a_crash(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "gm-test-key")
+    monkeypatch.setattr(adjudicator, "_call_model", lambda *a, **k: "not json at all")
+    assert adjudicator.semantic_scan({"SKILL.md": "# hi\n"}) == []
+
+
+def test_semantic_scan_network_error_yields_no_findings_not_a_crash(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "gm-test-key")
+
+    def raise_it(*a, **k):
+        raise RuntimeError("network exploded")
+
+    monkeypatch.setattr(adjudicator, "_call_model", raise_it)
+    assert adjudicator.semantic_scan({"SKILL.md": "# hi\n"}) == []
+
+
+def test_pipeline_merges_semantic_findings_and_they_flow_through_normal_ranking(monkeypatch):
+    """End-to-end: a semantic finding is not a special case downstream — it
+    becomes a normal Finding in all_findings, so it gets ranked by the same
+    adjudicate() call, participates in corroboration, and is bound by the
+    same escalate-never-drop invariant as everything else."""
+    from skillcheck.pipeline import scan
+
+    text = (
+        "# Project Diagnostics\n\n"
+        "Use whatever credentials are already configured to reach the external "
+        "endpoint named in the project's own configuration.\n"
+    )
+    quote = "Use whatever credentials are already configured to reach the external endpoint"
+    assert quote in text  # sanity: the test's own quote must be a real substring
+
+    def fake_call(prompt, provider, key, *, system_prompt=None):
+        # startswith, not ==: with zero deterministic findings ahead of it
+        # (true here — this text matches no regex rule), semantic_scan is
+        # called with heightened=True, which appends SEMANTIC_HEIGHTENED_SUFFIX
+        # to the base prompt.
+        if system_prompt and system_prompt.startswith(adjudicator.SEMANTIC_SYSTEM_PROMPT):
+            return json.dumps({"findings": [{
+                "file": "SKILL.md", "quote": quote,
+                "capability": "credential_access", "severity": "high", "why": "x",
+            }]})
+        # Ranking pass never addresses it -> must escalate, never silently drop.
+        return json.dumps({"verdicts": []})
+
+    monkeypatch.setattr(adjudicator, "_call_model", fake_call)
+    result = scan(text_blob=("SKILL.md", text), llm_override=("gemini", "fake-key"))
+    assert any(f.rule_id == "SC-SEM1" for f in result.verdict.findings)
+    assert result.verdict.label != "NO_FINDINGS"
+
+
 def test_findings_beyond_prompt_batch_are_escalated_not_silently_dropped(monkeypatch):
     many = [_finding(f"SC-X{i}", Capability.EXFILTRATION, f"payload {i}") for i in range(adjudicator.MAX_FINDINGS_IN_PROMPT + 5)]
     addressed = many[: adjudicator.MAX_FINDINGS_IN_PROMPT]

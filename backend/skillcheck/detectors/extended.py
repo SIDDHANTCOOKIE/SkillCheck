@@ -1,8 +1,7 @@
-"""Extended capability categories, closing gaps toward SkillSpector's
-16-category taxonomy (§5.3) for the parts that fit our declared v1 scope
-(§13 open decision 3 explicitly excludes full MCP server audit — those
-categories, tool-poisoning/rug-pull/least-privilege, are not reimplemented
-here on purpose).
+"""Extended capability categories beyond the core credential/exfiltration/
+execution set (§5.3), for the parts that fit our declared v1 scope (§13 open
+decision 3 explicitly excludes full MCP server audit — tool-poisoning,
+rug-pull, and least-privilege analysis are not in scope here on purpose).
 
 Covers: SSRF, privilege escalation, harmful content generation, anti-refusal
 / jailbreak framing, and agent/skill snooping (reading other skills' or the

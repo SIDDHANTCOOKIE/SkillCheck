@@ -39,7 +39,22 @@ def _direct_locality(graph: ComponentGraph, a: str, b: str) -> bool:
     return False
 
 
-def _has_corroborated_medium(findings: list[Finding], graph: ComponentGraph) -> bool:
+def _corroborated_medium_reason(findings: list[Finding], graph: ComponentGraph) -> str | None:
+    """A single MEDIUM finding shouldn't convict alone — but two, local to
+    each other (same file, or one linking to the other), are not a clean
+    skill. Returns a human-readable reason if such a pair exists, else None.
+
+    load_stage='unattended' (graph.py) is deliberately *not* checked here:
+    every rule that can mark a node unattended (SC-ST1/2/3/4/8) is itself
+    HIGH or CRITICAL, so a node's mere existence as unattended always means
+    `high_possible` (below in decide_verdict) is already true from that same
+    finding — a "single unattended MEDIUM corroborates alone" branch here
+    could never be the thing that actually changed a label, only redundant
+    with a reason that already fired. That distinction is real, but it
+    belongs where it's load-bearing: a *chain's sink* landing on an
+    unattended node changes its own tier (corroboration.py's
+    corroborate_chains), independent of whatever else is on that file.
+    """
     mediums = [
         f for f in findings
         if f.severity == Severity.MEDIUM and f.tier != Tier.FALSE_POSITIVE_SUSPECTED
@@ -47,8 +62,8 @@ def _has_corroborated_medium(findings: list[Finding], graph: ComponentGraph) -> 
     for i, a in enumerate(mediums):
         for b in mediums[i + 1:]:
             if a.rule_id != b.rule_id and _direct_locality(graph, a.file, b.file):
-                return True
-    return False
+                return "two or more independent medium-severity findings corroborate each other"
+    return None
 
 
 def _coverage_summary(ledger: list[CoverageEntry], pct: float) -> str:
@@ -105,7 +120,8 @@ def decide_verdict(
     # in the same file, so this requires proximity, not just quantity (2.5).
     # Recall still matters more than precision here — false positives are
     # tolerable, false negatives are not.
-    corroborated_medium = _has_corroborated_medium(findings, graph)
+    corroborated_medium_reason = _corroborated_medium_reason(findings, graph)
+    corroborated_medium = corroborated_medium_reason is not None
 
     # I4 says INSUFFICIENT_CONTEXT "escalates, never clears" — but no branch
     # below ever read that tier, so escalating into it was functionally
@@ -136,7 +152,7 @@ def decide_verdict(
     elif high_possible or scope_mismatch or corroborated_medium:
         label = "SUSPICIOUS"
         reason = (
-            "two or more independent medium-severity findings corroborate each other"
+            corroborated_medium_reason
             if corroborated_medium and not (high_possible or scope_mismatch)
             else "uncorroborated high-severity finding(s) or declared-vs-demanded scope mismatch present"
         )

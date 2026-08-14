@@ -127,7 +127,15 @@ def _effective_root(out: Path) -> Path:
             entries = [e for e in root.iterdir() if e.name not in _IGNORED_TOP_LEVEL]
         except OSError:
             break
-        if len(entries) == 1 and entries[0].is_dir() and not entries[0].is_symlink():
+        if (
+            len(entries) == 1 and entries[0].is_dir() and not entries[0].is_symlink()
+            # A single top-level `.claude/` or similar is itself the payload,
+            # not a wrapper folder around it — descending into it strips the
+            # `.claude/` prefix the structure layer's path matchers rely on
+            # (SC-ST1/SC-ST2 match `.claude/settings*.json`,
+            # SC-ST4 matches `.claude/agents/*.md`).
+            and not entries[0].name.startswith(".")
+        ):
             root = entries[0]
             continue
         break

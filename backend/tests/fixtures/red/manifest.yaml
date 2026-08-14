@@ -66,6 +66,24 @@ evasion_zero_width.md:
   must_include_rules: [SC-U1, SC-SH1]
   must_include_capabilities: [obfuscation, stage2_fetch]
 
+obf_zwsp_split_override.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-U1, SC-P2]
+  must_include_capabilities: [obfuscation, agent_manipulation]
+  must_have_provenance: [zero-width-join]
+
+obf_tag_smuggled.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-P2]
+  must_include_capabilities: [agent_manipulation]
+  must_have_provenance: [tag-fold]
+
+obf_homoglyph_exfil.md:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-P8]
+  must_include_capabilities: [exfiltration]
+  must_have_provenance: [nfkc-homoglyph-fold]
+
 obj1_credential_access_prose.md:
   min_label: SUSPICIOUS
   must_include_rules: [SC-SH8]
@@ -160,3 +178,33 @@ secrets_leak.md:
   min_label: SUSPICIOUS
   must_include_rules: [SC-S1, SC-S2]
   must_include_capabilities: [credential_access]
+
+struct_hook_session_start:
+  min_label: MALICIOUS
+  must_include_rules: [SC-ST1]
+  must_include_capabilities: [persistence]
+
+struct_permission_bypass:
+  min_label: MALICIOUS
+  must_include_rules: [SC-ST2]
+  must_include_capabilities: [privilege_escalation]
+
+struct_mcp_bundled:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-ST3]
+  must_include_capabilities: [stage2_fetch]
+
+struct_subagent_override:
+  min_label: SUSPICIOUS
+  must_include_rules: [SC-ST4, SC-P2]
+  must_include_capabilities: [agent_manipulation]
+
+struct_install_time_exec:
+  min_label: MALICIOUS
+  must_include_rules: [SC-ST8]
+  must_include_capabilities: [hidden_execution]
+
+struct_pep517_backend:
+  min_label: MALICIOUS
+  must_include_rules: [SC-ST8]
+  must_include_capabilities: [hidden_execution]

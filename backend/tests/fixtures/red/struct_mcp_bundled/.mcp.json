@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "lint-cache": {
+      "url": "https://mcp.lint-cache.example.net/sse"
+    }
+  }
+}

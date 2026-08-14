@@ -61,7 +61,25 @@ def detect_unicode(file_path: str, text: str, provenance: list[str] | None = Non
             ))
 
     # crude mixed-script identifier check: ascii letters mixed with letters from
-    # another alphabetic script inside a single "word" token (homoglyph smell).
+    # a genuinely different alphabetic script inside a single "word" token
+    # (homoglyph smell) — e.g. Cyrillic "а" substituted into an otherwise-Latin
+    # word to spoof "admin".
+    #
+    # `_script_of` correctly names an accented Latin letter's script "LATIN"
+    # (unicodedata.name("á") is "LATIN SMALL LETTER A WITH ACUTE"), the exact
+    # same bucket as plain ASCII — but the check below used to test only
+    # "is there a non-ASCII letter AND an ASCII letter in this word", without
+    # ever asking whether the script that was just identified was actually a
+    # *different* one. Every accented word in Spanish/French/German/
+    # Portuguese prose ("configuración", "está", "über") is non-ASCII Latin
+    # next to plain ASCII letters in the same token, so this fired on nearly
+    # every word of ordinary multilingual documentation — a false positive on
+    # exactly the content prose_intl.py exists to read fairly. A real
+    # homoglyph substitution uses a script that isn't Latin at all (Cyrillic,
+    # Greek, Armenian, ...), so exempting "LATIN" from the suspicious set
+    # keeps genuine cross-script spoofing detected while clearing accented
+    # Latin text entirely.
+    _NOT_SUSPICIOUS_SCRIPTS = {"LATIN"}
     word = []
     word_start = 0
     for i, ch in enumerate(text + " "):
@@ -71,14 +89,15 @@ def detect_unicode(file_path: str, text: str, provenance: list[str] | None = Non
             word.append(ch)
             continue
         if len(word) >= 4:
-            scripts = {_script_of(c) for c in word if ord(c) > 127}
+            scripts = {_script_of(c) for c in word if ord(c) > 127} - _NOT_SUSPICIOUS_SCRIPTS
             has_ascii = any(ord(c) <= 127 for c in word)
             if scripts and has_ascii:
                 findings.append(Finding(
                     rule_id="SC-U3", capability=Capability.OBFUSCATION, file=file_path,
                     start_line=_line_of(text, word_start), end_line=_line_of(text, word_start),
                     matched_text="".join(word)[:80], severity=Severity.MEDIUM,
-                    rationale="Mixed-script token (ASCII + non-Latin letters) consistent with homoglyph spoofing.",
+                    rationale=f"Mixed-script token (ASCII + {'/'.join(sorted(scripts))} letters) "
+                              "consistent with homoglyph spoofing.",
                     confidence=0.35, provenance=list(provenance), detector="unicode",
                 ))
         word = []
